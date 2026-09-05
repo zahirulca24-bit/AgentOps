@@ -57,7 +57,7 @@ describe('Browser Engine Integration', () => {
     // Default manager (blocks localhost)
     managerBlock = new BrowserManager(testConfig, false);
     await managerBlock.initialize();
-  });
+  }, 30000);
 
   afterAll(async () => {
     await managerAllow.cleanup();

@@ -5,7 +5,7 @@ import { Badge, Button, Card, Input } from '@/components/ui';
 import { ArrowLeft, AlertCircle, Bug, Search, Loader2 } from 'lucide-react';
 
 const severityVariant = (severity: ApiIssue['severity']) => severity === 'critical' ? 'danger' : severity === 'high' ? 'warning' : severity === 'medium' ? 'info' : 'neutral';
-const statusVariant = (status: ApiIssue['status']) => status === 'resolved' ? 'success' : status === 'open' ? 'danger' : 'neutral';
+const statusVariant = (status: ApiIssue['status']) => status === 'fixed' || status === 'closed' ? 'success' : status === 'open' ? 'danger' : 'neutral';
 
 export default function IssuesPage() { const id=usePathname().split('/').filter(Boolean)[1]; return id ? <IssueDetail id={id}/> : <IssueList/>; }
 

@@ -2,16 +2,55 @@ import crypto from 'crypto';
 
 function matchesCondition(item: any, cond: any): boolean {
   if (!cond) return true;
+  if (typeof cond === 'boolean') return cond;
+  if (typeof cond === 'function') {
+    const fnResult = cond(item);
+    if (typeof fnResult === 'boolean') return fnResult;
+    return matchesCondition(item, fnResult);
+  }
   if (typeof cond === 'object') {
-    const colName = cond.left?.name || cond.left?.columnName || cond.left?.property || cond.column?.name;
-    const targetVal = cond.right;
-    if (colName && targetVal !== undefined) {
+    if (Array.isArray(cond)) {
+      return cond.every(c => matchesCondition(item, c));
+    }
+    if (Array.isArray(cond.conditions)) {
+      return cond.conditions.every((c: any) => matchesCondition(item, c));
+    }
+
+    let colObj = cond.left || cond.column || cond.config?.left;
+    let targetVal = cond.right !== undefined ? cond.right : (cond.value !== undefined ? cond.value : cond.config?.right);
+
+    if (!colObj && Array.isArray(cond.queryChunks)) {
+      colObj = cond.queryChunks.find((chunk: any) => chunk && (chunk.name || chunk.columnName || chunk.key || chunk.config?.name));
+      const paramChunk = cond.queryChunks.find((chunk: any) => 
+        chunk && (
+          chunk.constructor?.name === 'Param' || 
+          'encoder' in chunk || 
+          ('value' in chunk && !Array.isArray(chunk.value) && typeof chunk.value !== 'object' && chunk.value !== ' = ' && chunk.value !== '=')
+        )
+      );
+      if (paramChunk) targetVal = paramChunk;
+    }
+
+    const colName = typeof colObj === 'string' ? colObj : (colObj?.name || colObj?.columnName || colObj?.property || colObj?.key);
+
+    while (targetVal !== undefined && targetVal !== null && typeof targetVal === 'object') {
+      if ('value' in targetVal) {
+        targetVal = targetVal.value;
+      } else if (Array.isArray(targetVal.queryChunks) && targetVal.queryChunks.length > 0) {
+        targetVal = targetVal.queryChunks[0]?.value ?? targetVal.queryChunks[0];
+      } else {
+        break;
+      }
+    }
+
+    if (colName) {
       const camelName = colName.replace(/_([a-z])/g, (_: string, letter: string) => letter.toUpperCase());
       const valInItem = item[camelName] !== undefined ? item[camelName] : item[colName];
       return valInItem === targetVal;
     }
+    return false;
   }
-  return true;
+  return false;
 }
 
 function getTableName(table: any): string {
@@ -51,6 +90,7 @@ export function createInMemoryDb() {
     issues: [],
     browser_sessions: [],
     evidence: [],
+    github_configs: [],
   };
 
   const mapTableName = (tableObj: any): string => {
@@ -66,6 +106,7 @@ export function createInMemoryDb() {
     if (normalized.includes('issue')) return 'issues';
     if (normalized.includes('browser_session') || normalized.includes('browsersession')) return 'browser_sessions';
     if (normalized.includes('evidence')) return 'evidence';
+    if (normalized.includes('github')) return 'github_configs';
 
     return normalized || 'projects';
   };
@@ -86,6 +127,20 @@ export function createInMemoryDb() {
       }
       if (withConfig.browserSessions) {
         clone.browserSessions = store.browser_sessions.filter(bs => bs.runId === item.id);
+      }
+    }
+    if (tableKey === 'issues') {
+      if (withConfig.run) {
+        clone.run = store.runs.find(r => r.id === item.runId) || null;
+      }
+      if (withConfig.testResult) {
+        clone.testResult = store.test_results.find(tr => tr.id === item.testResultId) || null;
+      }
+      if (withConfig.browserSession) {
+        clone.browserSession = store.browser_sessions.find(bs => bs.id === item.browserSessionId) || null;
+      }
+      if (withConfig.evidence) {
+        clone.evidence = store.evidence.filter(e => e.issueId === item.id || (item.runId && e.runId === item.runId));
       }
     }
     return clone;
@@ -212,6 +267,7 @@ export function createInMemoryDb() {
       issues: buildQueryApi('issues'),
       browserSessions: buildQueryApi('browser_sessions'),
       evidence: buildQueryApi('evidence'),
+      githubConfigs: buildQueryApi('github_configs'),
     },
 
     execute: async () => {

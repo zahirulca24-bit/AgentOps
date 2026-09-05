@@ -32,7 +32,8 @@ export function IssuesList() {
     switch (status) {
       case 'open': return <CircleDashed className="w-4 h-4 text-rose-500" />;
       case 'investigating': return <AlertCircle className="w-4 h-4 text-amber-500" />;
-      case 'resolved': return <CheckCircle2 className="w-4 h-4 text-emerald-500" />;
+      case 'fixed': return <CheckCircle2 className="w-4 h-4 text-emerald-500" />;
+      case 'closed': return <CheckCircle2 className="w-4 h-4 text-zinc-500" />;
     }
   };
 
@@ -58,7 +59,7 @@ export function IssuesList() {
       {/* Filters */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 text-xs">
-          {['all', 'open', 'investigating', 'resolved'].map(status => (
+          {['all', 'open', 'investigating', 'fixed', 'closed'].map(status => (
             <button
               key={status}
               type="button"
