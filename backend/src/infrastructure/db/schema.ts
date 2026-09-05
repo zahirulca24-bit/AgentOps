@@ -175,13 +175,14 @@ export const evidence = pgTable('evidence', {
   };
 });
 
+// Persist only a vault/secret-manager reference. Raw GitHub tokens must never be stored in the application database.
 export const githubConfigs = pgTable('github_configs', {
   id: uuid('id').primaryKey().defaultRandom(),
   projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
   owner: varchar('owner', { length: 255 }).notNull(),
   repo: varchar('repo', { length: 255 }).notNull(),
   defaultBranch: varchar('default_branch', { length: 255 }).notNull().default('main'),
-  token: text('token').notNull(),
+  tokenRef: varchar('token_ref', { length: 512 }),
   baseUrl: varchar('base_url', { length: 2048 }).notNull().default('https://api.github.com'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
