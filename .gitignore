@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+backend/node_modules/
+frontend/node_modules/
+
+# Production builds
+dist/
+backend/dist/
+frontend/dist/
+
+# Environment & local files
+.env
+*.env
+*.env.local
+
+# Evidence & Logs
+*.log
+backend/evidence/
+evidence/
+
+# OS & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Large Archives
+AgentOps-latest.zip

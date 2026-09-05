@@ -1,0 +1,6 @@
+{
+  "name": "AgentOps",
+  "description": "AI-powered QA & Software Operations Control Center",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

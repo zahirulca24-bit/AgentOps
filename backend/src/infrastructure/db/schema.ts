@@ -1,0 +1,233 @@
+import { 
+  pgTable, 
+  uuid, 
+  varchar, 
+  timestamp, 
+  text, 
+  integer, 
+  pgEnum,
+  index,
+  jsonb
+} from 'drizzle-orm/pg-core';
+import { relations } from 'drizzle-orm';
+
+// Enums
+export const taskStatusEnum = pgEnum('task_status', ['pending', 'running', 'completed', 'failed']);
+export const runStatusEnum = pgEnum('run_status', ['pending', 'running', 'passed', 'completed', 'failed', 'error', 'stopped', 'aborted']);
+export const stepStatusEnum = pgEnum('step_status', ['pending', 'running', 'completed', 'failed', 'skipped']);
+export const browserSessionStatusEnum = pgEnum('browser_session_status', ['active', 'closed', 'crashed']);
+export const testResultStatusEnum = pgEnum('test_result_status', ['pending', 'running', 'passed', 'failed', 'error', 'stopped', 'skipped']);
+export const issueSeverityEnum = pgEnum('issue_severity', ['critical', 'high', 'medium', 'low']);
+export const issueStatusEnum = pgEnum('issue_status', ['open', 'resolved', 'ignored']);
+
+// Tables
+export const projects = pgTable('projects', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: varchar('name', { length: 255 }).notNull(),
+  targetUrl: varchar('target_url', { length: 2048 }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => {
+  return {
+    createdAtIndex: index('project_created_at_idx').on(table.createdAt),
+  };
+});
+
+export const tasks = pgTable('tasks', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  command: text('command').notNull(),
+  targetUrl: varchar('target_url', { length: 2048 }),
+  status: taskStatusEnum('status').notNull().default('pending'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => {
+  return {
+    projectIdIndex: index('task_project_id_idx').on(table.projectId),
+    statusIndex: index('task_status_idx').on(table.status),
+  };
+});
+
+export const runs = pgTable('runs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  taskId: uuid('task_id').notNull().references(() => tasks.id, { onDelete: 'cascade' }),
+  status: runStatusEnum('status').notNull().default('running'),
+  startedAt: timestamp('started_at').notNull().defaultNow(),
+  completedAt: timestamp('completed_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => {
+  return {
+    taskIdIndex: index('run_task_id_idx').on(table.taskId),
+    statusIndex: index('run_status_idx').on(table.status),
+  };
+});
+
+export const runSteps = pgTable('run_steps', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  runId: uuid('run_id').notNull().references(() => runs.id, { onDelete: 'cascade' }),
+  sequence: integer('sequence').notNull(),
+  type: varchar('type', { length: 50 }).notNull(),
+  status: stepStatusEnum('status').notNull().default('pending'),
+  title: varchar('title', { length: 255 }).notNull(),
+  description: text('description'),
+  metadata: jsonb('metadata'),
+  startedAt: timestamp('started_at'),
+  completedAt: timestamp('completed_at'),
+}, (table) => {
+  return {
+    runIdIndex: index('step_run_id_idx').on(table.runId),
+  };
+});
+
+export const browserSessions = pgTable('browser_sessions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  runId: uuid('run_id').notNull().references(() => runs.id, { onDelete: 'cascade' }),
+  status: browserSessionStatusEnum('status').notNull().default('active'),
+  startedAt: timestamp('started_at').notNull().defaultNow(),
+  endedAt: timestamp('ended_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => {
+  return {
+    runIdIdx: index('browser_sessions_run_id_idx').on(table.runId),
+  };
+});
+
+// B9: Structured QA Test Cases
+export const testCases = pgTable('test_cases', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  runId: uuid('run_id').notNull().references(() => runs.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 255 }).notNull(),
+  category: varchar('category', { length: 50 }).notNull(),
+  priority: varchar('priority', { length: 20 }).notNull().default('medium'),
+  preconditions: text('preconditions'),
+  steps: jsonb('steps').notNull(),
+  assertions: jsonb('assertions').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => {
+  return {
+    runIdIdx: index('test_cases_run_id_idx').on(table.runId),
+  };
+});
+
+export const testResults = pgTable('test_results', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  runId: uuid('run_id').notNull().references(() => runs.id, { onDelete: 'cascade' }),
+  testCaseId: uuid('test_case_id').references(() => testCases.id, { onDelete: 'set null' }),
+  name: varchar('name', { length: 255 }).notNull(),
+  status: testResultStatusEnum('status').notNull().default('pending'),
+  durationMs: integer('duration_ms'),
+  summary: text('summary'),
+  errorMessage: text('error_message'),
+  screenshotRef: varchar('screenshot_ref', { length: 1024 }),
+  assertions: jsonb('assertions'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => {
+  return {
+    runIdIndex: index('test_run_id_idx').on(table.runId),
+    statusIndex: index('test_status_idx').on(table.status),
+  };
+});
+
+export const issues = pgTable('issues', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  runId: uuid('run_id').notNull().references(() => runs.id, { onDelete: 'cascade' }),
+  title: varchar('title', { length: 255 }).notNull(),
+  description: text('description'),
+  severity: issueSeverityEnum('severity').notNull(),
+  category: varchar('category', { length: 100 }),
+  status: issueStatusEnum('status').notNull().default('open'),
+  affectedUrl: varchar('affected_url', { length: 2048 }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => {
+  return {
+    runIdIndex: index('issue_run_id_idx').on(table.runId),
+    severityIndex: index('issue_severity_idx').on(table.severity),
+  };
+});
+
+export const evidence = pgTable('evidence', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  runId: uuid('run_id').notNull().references(() => runs.id, { onDelete: 'cascade' }),
+  testResultId: uuid('test_result_id').references(() => testResults.id, { onDelete: 'set null' }),
+  issueId: uuid('issue_id').references(() => issues.id, { onDelete: 'set null' }),
+  type: varchar('type', { length: 50 }).notNull(),
+  storageRef: varchar('storage_ref', { length: 2048 }).notNull(),
+  description: text('description'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => {
+  return {
+    runIdIndex: index('evidence_run_id_idx').on(table.runId),
+  };
+});
+
+// Relationships
+export const projectsRelations = relations(projects, ({ many }) => ({
+  tasks: many(tasks),
+}));
+
+export const tasksRelations = relations(tasks, ({ one, many }) => ({
+  project: one(projects, {
+    fields: [tasks.projectId],
+    references: [projects.id],
+  }),
+  runs: many(runs),
+}));
+
+export const runsRelations = relations(runs, ({ one, many }) => ({
+  task: one(tasks, {
+    fields: [runs.taskId],
+    references: [tasks.id],
+  }),
+  runSteps: many(runSteps),
+  browserSessions: many(browserSessions),
+  testResults: many(testResults),
+  issues: many(issues),
+  evidence: many(evidence),
+}));
+
+export const runStepsRelations = relations(runSteps, ({ one }) => ({
+  run: one(runs, {
+    fields: [runSteps.runId],
+    references: [runs.id],
+  }),
+}));
+
+export const browserSessionsRelations = relations(browserSessions, ({ one }) => ({
+  run: one(runs, {
+    fields: [browserSessions.runId],
+    references: [runs.id],
+  }),
+}));
+
+export const testResultsRelations = relations(testResults, ({ one, many }) => ({
+  run: one(runs, {
+    fields: [testResults.runId],
+    references: [runs.id],
+  }),
+  evidence: many(evidence),
+}));
+
+export const issuesRelations = relations(issues, ({ one, many }) => ({
+  run: one(runs, {
+    fields: [issues.runId],
+    references: [runs.id],
+  }),
+  evidence: many(evidence),
+}));
+
+export const evidenceRelations = relations(evidence, ({ one }) => ({
+  run: one(runs, {
+    fields: [evidence.runId],
+    references: [runs.id],
+  }),
+  testResult: one(testResults, {
+    fields: [evidence.testResultId],
+    references: [testResults.id],
+  }),
+  issue: one(issues, {
+    fields: [evidence.issueId],
+    references: [issues.id],
+  }),
+}));
