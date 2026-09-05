@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS "github_configs" (
 	"owner" varchar(255) NOT NULL,
 	"repo" varchar(255) NOT NULL,
 	"default_branch" varchar(255) DEFAULT 'main' NOT NULL,
-	"token" text NOT NULL,
+	"token_ref" varchar(512),
 	"base_url" varchar(2048) DEFAULT 'https://api.github.com' NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL
