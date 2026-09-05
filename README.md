@@ -63,6 +63,23 @@ Build the secure browser and QA foundation first.
 
 Turn QA findings into reviewable engineering work.
 
+### Phase 2 Build Plan
+
+- **P2.1** Evidence + Bug Model
+- **P2.2** Severity Classifier
+- **P2.3** AI Root-Cause Analyzer
+- **P2.4** GitHub Connector Foundation
+- **P2.5** Repo Read/Search + Task Branch Workflow
+- **P2.6** AI Code Fix Engine
+- **P2.7** Automated Test Runner
+- **P2.8** Commit + Pull Request + CI Integration
+- **P2.9** Bounded Self-Fixing Loop (max 3 attempts)
+- **P2.10** Security Hardening + Final Phase-2 Integration
+
+**Phase 2 target flow:** `QA Fail → Evidence → Severity → Root Cause → Repo Inspect → Task Branch → Fix → Tests → Commit → PR → CI → Retest → Success / Retry / Escalate`
+
+**Phase 2 guardrails:** never push fixes directly to `main`, never auto-merge PRs, keep secrets out of model context/logs, use bounded retries, and escalate failed autofix attempts to a human.
+
 8. **Screenshot / Evidence Capture** — attach screenshots and technical evidence to failures.
 9. **Bug Severity Classification** — classify findings as Critical, High, Medium, or Low.
 10. **AI Root-Cause Analysis** — correlate browser failures, logs, network errors, and source code.
