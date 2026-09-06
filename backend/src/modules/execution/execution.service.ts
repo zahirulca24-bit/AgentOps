@@ -8,10 +8,12 @@ import { AppError } from '../../core/errors.js';
 import type { TestStep, TestAssertion } from '../generator/generator.schema.js';
 import { broadcastRunEvent } from './execution.routes.js';
 import { EvidenceService } from '../evidence/evidence.service.js';
+import { SeverityClassifierService } from '../severity/severity.service.js';
 
 export class ExecutionService {
   private activeCancelledRuns = new Set<string>();
   private evidenceService: EvidenceService;
+  private severityClassifier: SeverityClassifierService;
 
   constructor(
     private db: Database,
@@ -19,6 +21,7 @@ export class ExecutionService {
     private config: EnvConfig
   ) {
     this.evidenceService = new EvidenceService(config);
+    this.severityClassifier = new SeverityClassifierService();
   }
 
   public async cancelRun(runId: string): Promise<void> {
@@ -116,13 +119,29 @@ export class ExecutionService {
           if (visualDefects.length > 0) {
             for (const defect of visualDefects) {
               try {
+                const title = `Visual Defect: ${defect.title}`;
+                const description = `${defect.description}${defect.selector ? ` Selector: ${defect.selector}` : ''}`;
+                const classification = this.severityClassifier.classify({
+                  title,
+                  description,
+                  category: 'visual',
+                  userFlowImpact: defect.severity === 'high' ? 'degraded' : 'minor',
+                  actualResult: defect.description,
+                });
+
                 await this.db.insert(issues).values({
                   runId,
-                  title: `Visual Defect: ${defect.title}`,
-                  description: `${defect.description}${defect.selector ? ` Selector: ${defect.selector}` : ''}`,
-                  severity: defect.severity === 'high' ? 'high' : 'medium',
+                  browserSessionId: session.sessionId,
+                  title,
+                  description,
+                  severity: classification.severity,
+                  severityReason: classification.reason,
                   category: 'visual',
                   status: 'open',
+                  reproductionSteps: [`Navigate to target page`, `Inspect visual layout of element: ${defect.selector || 'page'}`],
+                  expectedResult: 'Element renders correctly without layout defects',
+                  actualResult: defect.description,
+                  screenshotEvidence: screenshotRef ? [screenshotRef] : [],
                 });
                 broadcastRunEvent(runId, 'issue_created', { runId, title: defect.title, category: 'visual' });
               } catch (err) {}
@@ -202,13 +221,36 @@ export class ExecutionService {
         // Auto-create Issue for failed/error test result
         if (testStatus === 'failed' || testStatus === 'error') {
           try {
+            const rawSteps = tCase.steps as unknown as TestStep[];
+            const reproSteps = Array.isArray(rawSteps)
+              ? rawSteps.map(s => `${s.action} ${s.target || ''} ${s.value || ''}`.trim())
+              : [`Execute test case ${tCase.name}`];
+
+            const title = `${testStatus === 'error' ? 'Execution Error' : 'Test Failed'}: ${tCase.name}`;
+            const description = errorMessage || `Test ${tCase.name} encountered an issue during execution.`;
+            const classification = this.severityClassifier.classify({
+              title,
+              description,
+              category: 'functional',
+              errorMessage,
+              actualResult: errorMessage || `${testStatus === 'error' ? 'Execution error' : 'Assertion failed'}`,
+              userFlowImpact: testStatus === 'error' ? 'blocking' : 'blocking',
+            });
+
             const [createdIssue] = await this.db.insert(issues).values({
               runId,
-              title: `${testStatus === 'error' ? 'Execution Error' : 'Test Failed'}: ${tCase.name}`,
-              description: errorMessage || `Test ${tCase.name} encountered an issue during execution.`,
-              severity: testStatus === 'error' ? 'critical' : 'high',
+              testResultId: insertedResult?.id || null,
+              browserSessionId: session ? session.sessionId : null,
+              title,
+              description,
+              severity: classification.severity,
+              severityReason: classification.reason,
               category: 'functional',
               status: 'open',
+              reproductionSteps: reproSteps,
+              expectedResult: tCase.assertions ? JSON.stringify(tCase.assertions) : 'All test assertions pass',
+              actualResult: errorMessage || `${testStatus === 'error' ? 'Execution error' : 'Assertion failed'}`,
+              screenshotEvidence: screenshotRef ? [screenshotRef] : [],
             }).returning();
 
             broadcastRunEvent(runId, 'issue_created', { runId, issueId: createdIssue?.id, title: tCase.name });

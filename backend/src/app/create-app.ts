@@ -15,6 +15,9 @@ import { BrowserManager } from '../infrastructure/browser/browser.manager.js';
 import { redactString } from '../infrastructure/redact/redactSensitive.js';
 
 import { apiRoutes } from '../modules/api/api.routes.js';
+import { githubRoutes } from '../modules/github/github.routes.js';
+import { runnerRoutes } from '../modules/runner/runner.routes.js';
+import { selfFixRoutes } from '../modules/self-fix/self-fix.routes.js';
 
 export async function createApp(config: EnvConfig) {
   const dbClient = createDbClient(config);
@@ -33,6 +36,7 @@ export async function createApp(config: EnvConfig) {
         'req.headers.refreshtoken',
         'req.headers.apikey',
         'req.headers.secret',
+        'req.headers.github_token',
         'DATABASE_URL',
         'GEMINI_API_KEY',
       ]
@@ -140,6 +144,10 @@ export async function createApp(config: EnvConfig) {
   await app.register(evidenceRoutes, { config });
   await app.register(executionRoutes, { config });
   await app.register(apiRoutes, { db: dbClient.db, aiProvider, browserManager, config });
+  await app.register(githubRoutes, { prefix: '/api/v1/github' });
+  await app.register(runnerRoutes, { prefix: '/api/v1/fix-runner' });
+  await app.register(selfFixRoutes, { prefix: '/api/v1/issues', db: dbClient.db, aiProvider });
+
 
   // Close database connection gracefully
   app.addHook('onClose', async () => {

@@ -1,6 +1,6 @@
 export type RunStatus = 'passed' | 'failed' | 'running' | 'queued';
 export type IssueSeverity = 'critical' | 'high' | 'medium' | 'low';
-export type IssueStatus = 'open' | 'investigating' | 'resolved';
+export type IssueStatus = 'open' | 'investigating' | 'fixed' | 'closed';
 
 export interface TestRun {
   id: string;
@@ -112,7 +112,7 @@ export const MOCK_ISSUES: Issue[] = [
     title: 'Contrast ratio below WCAG AA standard on secondary buttons',
     description: 'Automated accessibility scan flagged the "Cancel" button with a contrast ratio of 3.2:1 (requires 4.5:1).',
     severity: 'low',
-    status: 'resolved',
+    status: 'fixed',
     discoveredAt: '3 days ago',
     runId: 'run_8010',
     url: 'https://ecommerce.example.com/cart',

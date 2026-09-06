@@ -25,6 +25,7 @@ export async function evidenceRoutes(fastify: FastifyInstance, options: { config
     const { id } = parseResult.data;
     const { content, filePath } = await evidenceService.getEvidence(id);
 
+    // Set simple content type based on extension
     if (filePath.endsWith('.png')) {
       reply.type('image/png');
     } else if (filePath.endsWith('.jpg') || filePath.endsWith('.jpeg')) {

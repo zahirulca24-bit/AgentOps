@@ -17,8 +17,9 @@ const SENSITIVE_PATTERNS = [
   // Generic JWT Tokens (header.payload.signature)
   /eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/gi,
 
-  // AWS Access Key ID / Secret Key patterns
-  /(AKIA[0-9A-Z]{16})/g,
+  // GitHub tokens (PAT, OAuth, User/Server tokens)
+  /(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,}/gi,
+  /github_pat_[A-Za-z0-9_]{80,}/gi,
 ];
 
 const SENSITIVE_KEYS = new Set([
@@ -34,6 +35,12 @@ const SENSITIVE_KEYS = new Set([
   'api_key',
   'gemini_api_key',
   'database_url',
+  'github_token',
+  'githubtoken',
+  'github_pat',
+  'pat',
+  'personalaccesstoken',
+  'personal_access_token',
 ]);
 
 export function redactString(input: string): string {
@@ -48,9 +55,13 @@ export function redactString(input: string): string {
   redacted = redacted.replace(/Bearer\s+[A-Za-z0-9\-._~+/]+=*/gi, 'Bearer [REDACTED]');
   redacted = redacted.replace(/Basic\s+[A-Za-z0-9+/]+=*/gi, 'Basic [REDACTED]');
 
+  // Redact GitHub tokens
+  redacted = redacted.replace(/(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]+/gi, '[REDACTED_GITHUB_TOKEN]');
+  redacted = redacted.replace(/github_pat_[A-Za-z0-9_]+/gi, '[REDACTED_GITHUB_PAT]');
+
   // Redact key=value or key: value
   redacted = redacted.replace(
-    /(?:api[_-]?key|secret|password|passwd|auth[_-]?token|access[_-]?token|refresh[_-]?token|private[_-]?key)\s*([:=])\s*["']?([^"'\s,;&]+)["']?/gi,
+    /(?:api[_-]?key|secret|password|passwd|auth[_-]?token|access[_-]?token|refresh[_-]?token|private[_-]?key|github[_-]?token)\s*([:=])\s*["']?([^"'\s,;&]+)["']?/gi,
     (match, separator) => `${match.split(separator)[0]}${separator}"[REDACTED]"`
   );
 

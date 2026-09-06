@@ -13,7 +13,12 @@ export type ErrorCode =
   | 'ACTION_FAILED'
   | 'ACTION_LIMIT_REACHED'
   | 'SECURITY_ERROR'
-  | 'PAYLOAD_TOO_LARGE';
+  | 'PAYLOAD_TOO_LARGE'
+  | 'GITHUB_AUTH_FAILED'
+  | 'GITHUB_REPO_NOT_FOUND'
+  | 'GITHUB_PERMISSION_DENIED'
+  | 'GITHUB_RATE_LIMITED'
+  | 'GITHUB_API_ERROR';
 
 export class AppError extends Error {
   public readonly code: ErrorCode;

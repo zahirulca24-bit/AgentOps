@@ -1,6 +1,8 @@
 export interface StructuredQAContext {
   taskCommand: string;
   targetUrl?: string | null;
+  promptOverride?: string;
+  analysisContext?: any;
 }
 
 export interface AIProvider {

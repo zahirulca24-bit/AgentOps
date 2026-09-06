@@ -7,14 +7,15 @@ import { createInMemoryDb } from './in-memory-db.js';
 export type Database = any;
 
 export function createDbClient(config: EnvConfig) {
+  const isTestEnv = config.NODE_ENV === 'test' || process.env.NODE_ENV === 'test';
   const queryClient = postgres(config.DATABASE_URL, {
-    connect_timeout: 2,
-    max_lifetime: 10,
+    connect_timeout: isTestEnv ? 1 : 2,
+    max_lifetime: 5,
   });
   const realDb = drizzle(queryClient, { schema });
   const inMemoryDb = createInMemoryDb();
 
-  let useFallback = false;
+  let useFallback = isTestEnv;
 
   function activateFallback(err?: any) {
     if (!useFallback) {
@@ -24,7 +25,9 @@ export function createDbClient(config: EnvConfig) {
   }
 
   // Fast background probe to detect if PostgreSQL is online
-  queryClient`SELECT 1`.catch((err) => {
+  queryClient`SELECT 1`.then(() => {
+    useFallback = false;
+  }).catch((err) => {
     activateFallback(err);
   });
 

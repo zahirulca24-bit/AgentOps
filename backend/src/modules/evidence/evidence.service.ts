@@ -43,10 +43,12 @@ export class EvidenceService {
 
     const evidenceId = crypto.randomUUID();
     const ext = options.filename ? path.extname(options.filename) : '.dat';
+    // Sanitize extension to prevent dangerous files
     const safeExt = /^[a-zA-Z0-9.]+$/.test(ext) ? ext : '.dat';
     const safeFilename = `${evidenceId}${safeExt}`;
     const targetPath = path.resolve(this.rootDir, safeFilename);
 
+    // Path Traversal Security Check
     if (!targetPath.startsWith(this.rootDir)) {
       throw new AppError('SECURITY_ERROR', 'Invalid evidence filename or path traversal attempt', 400);
     }
@@ -77,10 +79,12 @@ export class EvidenceService {
   public async getEvidence(evidenceId: string): Promise<{ content: Buffer; filePath: string }> {
     await this.initialize();
 
+    // Validate ID format (must be alphanumeric or UUID format)
     if (!/^[a-zA-Z0-9-]+$/.test(evidenceId)) {
       throw new AppError('VALIDATION_ERROR', 'Invalid evidence ID format', 400);
     }
 
+    // Find file matching evidence ID prefix in rootDir
     const files = await fs.readdir(this.rootDir);
     const targetFile = files.find(f => f.startsWith(evidenceId));
 
@@ -90,6 +94,7 @@ export class EvidenceService {
 
     const fullPath = path.resolve(this.rootDir, targetFile);
 
+    // Path Traversal Security Check
     if (!fullPath.startsWith(this.rootDir)) {
       throw new AppError('SECURITY_ERROR', 'Access denied: Path traversal detected', 403);
     }

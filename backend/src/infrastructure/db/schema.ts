@@ -18,7 +18,7 @@ export const stepStatusEnum = pgEnum('step_status', ['pending', 'running', 'comp
 export const browserSessionStatusEnum = pgEnum('browser_session_status', ['active', 'closed', 'crashed']);
 export const testResultStatusEnum = pgEnum('test_result_status', ['pending', 'running', 'passed', 'failed', 'error', 'stopped', 'skipped']);
 export const issueSeverityEnum = pgEnum('issue_severity', ['critical', 'high', 'medium', 'low']);
-export const issueStatusEnum = pgEnum('issue_status', ['open', 'resolved', 'ignored']);
+export const issueStatusEnum = pgEnum('issue_status', ['open', 'investigating', 'fixed', 'closed']);
 
 // Tables
 export const projects = pgTable('projects', {
@@ -132,18 +132,31 @@ export const testResults = pgTable('test_results', {
 export const issues = pgTable('issues', {
   id: uuid('id').primaryKey().defaultRandom(),
   runId: uuid('run_id').notNull().references(() => runs.id, { onDelete: 'cascade' }),
+  testResultId: uuid('test_result_id').references(() => testResults.id, { onDelete: 'set null' }),
+  browserSessionId: uuid('browser_session_id').references(() => browserSessions.id, { onDelete: 'set null' }),
   title: varchar('title', { length: 255 }).notNull(),
   description: text('description'),
   severity: issueSeverityEnum('severity').notNull(),
+  severityReason: text('severity_reason'),
   category: varchar('category', { length: 100 }),
   status: issueStatusEnum('status').notNull().default('open'),
+  reproductionSteps: jsonb('reproduction_steps'),
+  expectedResult: text('expected_result'),
+  actualResult: text('actual_result'),
+  screenshotEvidence: jsonb('screenshot_evidence'),
+  consoleEvidence: jsonb('console_evidence'),
+  networkEvidence: jsonb('network_evidence'),
   affectedUrl: varchar('affected_url', { length: 2048 }),
+  rootCauseAnalysis: jsonb('root_cause_analysis'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (table) => {
   return {
     runIdIndex: index('issue_run_id_idx').on(table.runId),
+    testResultIdIndex: index('issue_test_result_id_idx').on(table.testResultId),
+    browserSessionIdIndex: index('issue_browser_session_id_idx').on(table.browserSessionId),
     severityIndex: index('issue_severity_idx').on(table.severity),
+    statusIndex: index('issue_status_idx').on(table.status),
   };
 });
 
@@ -162,9 +175,27 @@ export const evidence = pgTable('evidence', {
   };
 });
 
+// Persist only a vault/secret-manager reference. Raw GitHub tokens must never be stored in the application database.
+export const githubConfigs = pgTable('github_configs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+  owner: varchar('owner', { length: 255 }).notNull(),
+  repo: varchar('repo', { length: 255 }).notNull(),
+  defaultBranch: varchar('default_branch', { length: 255 }).notNull().default('main'),
+  tokenRef: varchar('token_ref', { length: 512 }),
+  baseUrl: varchar('base_url', { length: 2048 }).notNull().default('https://api.github.com'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => {
+  return {
+    projectIdIndex: index('github_configs_project_id_idx').on(table.projectId),
+  };
+});
+
 // Relationships
 export const projectsRelations = relations(projects, ({ many }) => ({
   tasks: many(tasks),
+  githubConfigs: many(githubConfigs),
 }));
 
 export const tasksRelations = relations(tasks, ({ one, many }) => ({
@@ -213,6 +244,14 @@ export const issuesRelations = relations(issues, ({ one, many }) => ({
   run: one(runs, {
     fields: [issues.runId],
     references: [runs.id],
+  }),
+  testResult: one(testResults, {
+    fields: [issues.testResultId],
+    references: [testResults.id],
+  }),
+  browserSession: one(browserSessions, {
+    fields: [issues.browserSessionId],
+    references: [browserSessions.id],
   }),
   evidence: many(evidence),
 }));
