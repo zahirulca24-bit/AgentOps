@@ -10,7 +10,7 @@ describe('Gemini 3.6 Flash & Fallback Degraded Mode', () => {
     expect(config.AI_MODEL).toBe('gemini-3.6-flash');
   });
 
-  it('handles generic Gemini API failures gracefully without throwing AppError', async () => {
+  it('handles temporary Gemini API failures gracefully for current run without permanent degradation', async () => {
     const config = loadConfig({
       NODE_ENV: 'test',
       GEMINI_API_KEY: 'valid_looking_key_for_testing',
@@ -19,37 +19,66 @@ describe('Gemini 3.6 Flash & Fallback Degraded Mode', () => {
 
     const provider = new GeminiProvider(config);
 
-    // Mock internal AI model generateContent to simulate a rate-limit 429 / 500 network failure
+    const mockGenerateContent = vi.fn()
+      .mockRejectedValueOnce(new Error('429 Too Many Requests: Rate limit exceeded'))
+      .mockResolvedValueOnce({
+        text: JSON.stringify({
+          objective: 'QA Verification: Recovered run',
+          steps: [{ type: 'inspect', title: 'Step 1' }],
+        }),
+      });
+
     (provider as any).ai = {
       models: {
-        generateContent: vi.fn().mockRejectedValue(new Error('429 Too Many Requests: Rate limit exceeded')),
+        generateContent: mockGenerateContent,
       },
     };
 
     // Initially available
     expect(provider.isAvailable()).toBe(true);
-    expect(provider.isDegraded()).toBe(false);
 
-    // Generate plan while Gemini API is failing
-    const result = await provider.generateStructuredQA<any>(
-      {
-        taskCommand: 'Test generic API failure fallback',
-        targetUrl: 'https://example.com',
-      },
-      {
-        properties: {
-          objective: { type: 'string' },
-          steps: { type: 'array' },
-        },
-      }
+    // 1. Current run encounters temporary 429 error -> returns fallback response
+    const currentRunResult = await provider.generateStructuredQA<any>(
+      { taskCommand: 'Run 1 under temporary error' },
+      { properties: { objective: { type: 'string' }, steps: { type: 'array' } } }
     );
 
-    // QA run does NOT fail; fallback plan is returned
-    expect(result).toBeDefined();
-    expect(result.objective).toContain('QA Verification (Degraded/Fallback Mode)');
-    expect(result.steps).toBeDefined();
+    expect(currentRunResult.objective).toContain('QA Verification (Degraded/Fallback Mode)');
+    // Provider is NOT permanently degraded for future runs
+    expect(provider.isAvailable()).toBe(true);
+    expect(provider.isDegraded()).toBe(false);
 
-    // Provider state is set to degraded mode
+    // 2. Next new run retries Gemini API -> API recovers and returns live AI response
+    const nextRunResult = await provider.generateStructuredQA<any>(
+      { taskCommand: 'Run 2 retrying Gemini' },
+      { properties: { objective: { type: 'string' }, steps: { type: 'array' } } }
+    );
+
+    expect(nextRunResult.objective).toBe('QA Verification: Recovered run');
+    expect(mockGenerateContent).toHaveBeenCalledTimes(2);
+  });
+
+  it('permanently degrades to fallback when API key is invalid', async () => {
+    const config = loadConfig({
+      NODE_ENV: 'test',
+      GEMINI_API_KEY: 'invalid_key',
+    });
+
+    const provider = new GeminiProvider(config);
+    (provider as any).ai = {
+      models: {
+        generateContent: vi.fn().mockRejectedValue(new Error('API_KEY_INVALID: Key not valid')),
+      },
+    };
+
+    expect(provider.isAvailable()).toBe(true);
+
+    await provider.generateStructuredQA<any>(
+      { taskCommand: 'Test invalid key' },
+      { properties: { objective: { type: 'string' }, steps: { type: 'array' } } }
+    );
+
+    // Invalid key triggers permanent fallback
     expect(provider.isAvailable()).toBe(false);
     expect(provider.isDegraded()).toBe(true);
   });

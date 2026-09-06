@@ -7,12 +7,12 @@ export class GeminiProvider implements AIProvider {
   private ai: GoogleGenAI;
   private model: string;
   private isDummyKey: boolean;
-  private isDegradedMode: boolean = false;
+  private isPermanentFallback: boolean = false;
 
   constructor(config: EnvConfig) {
     this.isDummyKey = !config.GEMINI_API_KEY || config.GEMINI_API_KEY === 'dummy_key';
     if (this.isDummyKey) {
-      this.isDegradedMode = true;
+      this.isPermanentFallback = true;
       console.warn('[AI] GEMINI_API_KEY is not set or set to dummy key. Using local deterministic fallback provider.');
     }
     
@@ -23,15 +23,15 @@ export class GeminiProvider implements AIProvider {
   }
 
   public isAvailable(): boolean {
-    return !this.isDummyKey && !this.isDegradedMode;
+    return !this.isDummyKey && !this.isPermanentFallback;
   }
 
   public isDegraded(): boolean {
-    return this.isDummyKey || this.isDegradedMode;
+    return this.isDummyKey || this.isPermanentFallback;
   }
 
   async generateStructuredQA<T>(context: StructuredQAContext, responseSchema: any): Promise<T> {
-    if (this.isDummyKey || this.isDegradedMode) {
+    if (this.isDummyKey || this.isPermanentFallback) {
       return this.getFallbackResponse<T>(context, responseSchema);
     }
 
@@ -60,8 +60,16 @@ Do not generate arbitrary executable code. Do not hallucinate URLs.`;
       return JSON.parse(response.text) as T;
     } catch (error: any) {
       const errMsg = String(error?.message || error);
-      console.warn(`[AI] Gemini API Provider call failed/unavailable. Falling back to local deterministic provider: ${errMsg}`);
-      this.isDegradedMode = true;
+
+      if (errMsg.includes('API_KEY_INVALID') || errMsg.includes('API key not valid') || errMsg.includes('INVALID_ARGUMENT')) {
+        console.warn('[AI] Gemini API Key invalid. Permanently falling back to local deterministic provider.');
+        this.isPermanentFallback = true;
+        return this.getFallbackResponse<T>(context, responseSchema);
+      }
+
+      // Temporary API failure (e.g. 429 rate limit, 500 server error, network timeout).
+      // Fallback for current run without permanently degrading the provider for future runs.
+      console.warn(`[AI] Temporary Gemini API error during run. Falling back for current run: ${errMsg}`);
       return this.getFallbackResponse<T>(context, responseSchema);
     }
   }
