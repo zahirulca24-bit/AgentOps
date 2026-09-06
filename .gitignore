@@ -15,8 +15,8 @@ frontend/dist/
 
 # Evidence & Logs
 *.log
-backend/evidence/
-evidence/
+/backend/evidence/
+/evidence/
 
 # OS & IDE
 .DS_Store
