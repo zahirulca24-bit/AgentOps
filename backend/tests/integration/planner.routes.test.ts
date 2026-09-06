@@ -9,7 +9,7 @@ const testConfig = {
   LOG_LEVEL: 'silent' as const,
   CORS_ORIGINS: ['http://localhost:3000'],
   DATABASE_URL: 'postgresql://user:pass@test-host:5432/testdb',
-  AI_MODEL: 'gemini-2.5-flash'
+  AI_MODEL: 'gemini-3.6-flash'
 };
 
 describe('Planner Routes', () => {

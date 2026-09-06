@@ -10,7 +10,7 @@ const testConfig: EnvConfig = {
   LOG_LEVEL: 'silent',
   CORS_ORIGINS: ['http://localhost:3000'],
   DATABASE_URL: 'postgresql://user:pass@test-host:5432/testdb',
-  AI_MODEL: 'gemini-2.5-flash',
+  AI_MODEL: 'gemini-3.6-flash',
   MAX_CONCURRENT_SESSIONS: 2,
   BROWSER_ACTION_TIMEOUT_MS: 3000,
   BROWSER_NAVIGATION_TIMEOUT_MS: 5000,

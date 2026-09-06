@@ -7,4 +7,6 @@ export interface StructuredQAContext {
 
 export interface AIProvider {
   generateStructuredQA<T>(context: StructuredQAContext, responseSchema: any): Promise<T>;
+  isAvailable?(): boolean;
+  isDegraded?(): boolean;
 }

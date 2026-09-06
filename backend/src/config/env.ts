@@ -8,7 +8,7 @@ const envSchema = z.object({
   CORS_ORIGINS: z.string().default('http://localhost:3000').transform((val) => val.split(',').map(s => s.trim())),
   DATABASE_URL: z.string().url().default('postgresql://postgres:postgres@localhost:5432/agentops'),
   GEMINI_API_KEY: z.string().optional(),
-  AI_MODEL: z.string().default('gemini-2.5-flash'),
+  AI_MODEL: z.string().default('gemini-3.6-flash'),
   MAX_CONCURRENT_SESSIONS: z.coerce.number().int().positive().default(5),
   BROWSER_ACTION_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
   BROWSER_NAVIGATION_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
