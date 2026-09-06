@@ -7,10 +7,12 @@ export class GeminiProvider implements AIProvider {
   private ai: GoogleGenAI;
   private model: string;
   private isDummyKey: boolean;
+  private isDegradedMode: boolean = false;
 
   constructor(config: EnvConfig) {
     this.isDummyKey = !config.GEMINI_API_KEY || config.GEMINI_API_KEY === 'dummy_key';
     if (this.isDummyKey) {
+      this.isDegradedMode = true;
       console.warn('[AI] GEMINI_API_KEY is not set or set to dummy key. Using local deterministic fallback provider.');
     }
     
@@ -20,8 +22,16 @@ export class GeminiProvider implements AIProvider {
     this.model = config.AI_MODEL;
   }
 
+  public isAvailable(): boolean {
+    return !this.isDummyKey && !this.isDegradedMode;
+  }
+
+  public isDegraded(): boolean {
+    return this.isDummyKey || this.isDegradedMode;
+  }
+
   async generateStructuredQA<T>(context: StructuredQAContext, responseSchema: any): Promise<T> {
-    if (this.isDummyKey) {
+    if (this.isDummyKey || this.isDegradedMode) {
       return this.getFallbackResponse<T>(context, responseSchema);
     }
 
@@ -50,11 +60,9 @@ Do not generate arbitrary executable code. Do not hallucinate URLs.`;
       return JSON.parse(response.text) as T;
     } catch (error: any) {
       const errMsg = String(error?.message || error);
-      if (errMsg.includes('API_KEY_INVALID') || errMsg.includes('API key not valid') || errMsg.includes('INVALID_ARGUMENT')) {
-        console.warn('[AI] Gemini API Key invalid. Falling back to local deterministic provider.');
-        return this.getFallbackResponse<T>(context, responseSchema);
-      }
-      throw new AppError('INTERNAL_ERROR', `AI Provider failure: ${errMsg}`, 500);
+      console.warn(`[AI] Gemini API Provider call failed/unavailable. Falling back to local deterministic provider: ${errMsg}`);
+      this.isDegradedMode = true;
+      return this.getFallbackResponse<T>(context, responseSchema);
     }
   }
 
@@ -64,7 +72,7 @@ Do not generate arbitrary executable code. Do not hallucinate URLs.`;
     if (schemaProperties.objective && schemaProperties.steps) {
       // Planner Response Schema
       return {
-        objective: `QA Verification: ${context.taskCommand.slice(0, 100)}`,
+        objective: `QA Verification (Degraded/Fallback Mode): ${context.taskCommand.slice(0, 100)}`,
         steps: [
           {
             type: 'inspect',
@@ -108,37 +116,37 @@ Do not generate arbitrary executable code. Do not hallucinate URLs.`;
     }
 
     if (schemaProperties.likelyCause) {
-      // Root-Cause Analysis Response Schema
+      // Root-Cause Analysis Response Schema (AI-only task fallback)
       const ctx = context.analysisContext || {};
       const findingTitle = ctx.finding?.title || context.taskCommand || 'QA Finding';
       const actualRes = ctx.finding?.actualResult || ctx.failedTest?.errorMessage || 'Assertion failure observed';
       
-      const facts: string[] = [];
+      const facts: string[] = ['[AI Provider Unavailable - Operating in Fallback Mode]'];
       if (ctx.finding?.title) facts.push(`Finding Title: ${ctx.finding.title}`);
       if (ctx.failedTest?.errorMessage) facts.push(`Error Message: ${ctx.failedTest.errorMessage}`);
       if (ctx.consoleErrors && ctx.consoleErrors.length > 0) facts.push(`Console Errors: ${ctx.consoleErrors.slice(0, 2).join('; ')}`);
       if (ctx.networkFailures && ctx.networkFailures.length > 0) facts.push(`Network Failures: ${ctx.networkFailures.slice(0, 2).join('; ')}`);
-      if (facts.length === 0) facts.push(`Observed failure: ${findingTitle}`);
+      if (facts.length === 1) facts.push(`Observed failure: ${findingTitle}`);
 
       return {
-        likelyCause: `Observed failure during QA execution: ${actualRes}`,
+        likelyCause: `[AI Unavailable] Observed failure during QA execution: ${actualRes}`,
         confidence: 'high',
         affectedArea: ctx.finding?.category === 'visual' ? 'Frontend UI / Visual Layout' : 'Functional Application Logic',
         suspectedComponent: ctx.finding?.affectedUrl || 'App/Component',
         recommendedNextAction: 'Inspect recent code changes affecting target selector or UI layout, and verify browser assertion rules.',
         facts,
-        inference: `Based on observed facts (${facts.join(' | ')}), the component failed to fulfill expected assertion criteria due to execution mismatch or unhandled runtime state.`,
+        inference: `[AI Unavailable] Based on observed facts (${facts.join(' | ')}), deterministic analysis indicates component failure due to execution mismatch or unhandled runtime state.`,
       } as unknown as T;
     }
 
     if (schemaProperties.fileChanges || schemaProperties.explanation) {
-      // Code Fix Engine Response Schema
+      // Code Fix Engine Response Schema (AI-only task fallback)
       const ctx = context.analysisContext || {};
       const targetPath = ctx.targetFile || 'src/components/TargetComponent.tsx';
       const origContent = ctx.targetFileContent || '// Target component file';
 
       return {
-        explanation: `Minimal code fix proposal for: ${context.taskCommand.slice(0, 100)}`,
+        explanation: `[AI Unavailable] Fallback code fix proposal for: ${context.taskCommand.slice(0, 100)}`,
         changedFiles: [targetPath],
         fileChanges: [
           {
@@ -149,6 +157,7 @@ Do not generate arbitrary executable code. Do not hallucinate URLs.`;
           }
         ],
         riskNotes: [
+          '[AI Provider Unavailable] Proposal generated via deterministic fallback engine.',
           'Verify layout rendering across targeted device viewports.',
           'Run regression test suite on task branch before merging.',
         ]

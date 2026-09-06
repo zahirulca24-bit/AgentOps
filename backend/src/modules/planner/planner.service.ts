@@ -43,6 +43,8 @@ export class PlannerService {
 
     const plan = parseResult.data;
 
+    const isDegraded = this.aiProvider.isDegraded ? this.aiProvider.isDegraded() : false;
+
     // 4. Persist accepted plan (Create a Run and Steps)
     await this.db.transaction(async (tx: any) => {
       const [newRun] = await tx.insert(runs).values({
@@ -57,6 +59,7 @@ export class PlannerService {
         title: step.title,
         description: step.description,
         status: 'pending' as const,
+        metadata: isDegraded ? { mode: 'degraded', aiAvailable: false, fallbackMode: true } : undefined,
       }));
 
       await tx.insert(runSteps).values(stepValues);

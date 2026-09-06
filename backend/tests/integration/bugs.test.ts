@@ -10,7 +10,7 @@ const testConfig = {
   LOG_LEVEL: 'silent' as const,
   CORS_ORIGINS: ['http://localhost:3000'],
   DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/agentops_test',
-  AI_MODEL: 'gemini-2.5-flash'
+  AI_MODEL: 'gemini-3.6-flash'
 };
 
 describe('Phase-2 Bug / Finding Foundation API', () => {
