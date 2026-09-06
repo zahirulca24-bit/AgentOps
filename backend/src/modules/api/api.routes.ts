@@ -201,6 +201,11 @@ export async function apiRoutes(
     const runList = await db.query.runs.findMany({
       orderBy: desc(runs.createdAt),
       with: {
+        task: {
+          with: {
+            project: true,
+          }
+        },
         testResults: true,
         issues: true,
         evidence: true,
@@ -221,6 +226,11 @@ export async function apiRoutes(
     const runRecord = await db.query.runs.findFirst({
       where: eq(runs.id, parseResult.data.id),
       with: {
+        task: {
+          with: {
+            project: true,
+          }
+        },
         testResults: true,
         issues: true,
         evidence: true,

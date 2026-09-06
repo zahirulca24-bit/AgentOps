@@ -67,9 +67,26 @@ export interface ApiBrowserSession {
   createdAt: string;
 }
 
+export interface ApiProject {
+  id: string;
+  name: string;
+  targetUrl?: string | null;
+  createdAt: string;
+}
+
+export interface ApiTask {
+  id: string;
+  projectId: string;
+  command: string;
+  targetUrl?: string | null;
+  status: string;
+  project?: ApiProject;
+}
+
 export interface ApiRun {
   id: string;
   taskId: string;
+  task?: ApiTask;
   status: ApiRunStatus;
   startedAt: string;
   completedAt?: string | null;
