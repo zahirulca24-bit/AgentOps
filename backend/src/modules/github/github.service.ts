@@ -91,15 +91,15 @@ export class GitHubService {
     if (!validation.valid) throw new GitHubError('GITHUB_PERMISSION_DENIED', validation.reason || 'Invalid branch name for commit', 403);
     if (!input.changes || input.changes.length === 0) throw new GitHubError('GITHUB_API_ERROR', 'At least one file change must be provided for commit', 400);
 
-    // Redact metadata only. Never mutate source payloads: redaction can corrupt legitimate code.
+    // Redact secrets in commit message and file contents
     const safeCommitMessage = redactString(input.commitMessage || 'Fix: Autonomous code changes');
-    const unchangedSourcePayloads = input.changes.map(c => ({
+    const safeChanges = input.changes.map(c => ({
       path: c.path,
-      content: c.content,
+      content: redactString(c.content),
       operation: c.operation || 'update',
     }));
 
-    return this.provider.applyFileChanges(input.owner, input.repo, input.branch, safeCommitMessage, unchangedSourcePayloads, input.token, input.baseUrl);
+    return this.provider.applyFileChanges(input.owner, input.repo, input.branch, safeCommitMessage, safeChanges, input.token, input.baseUrl);
   }
 
   public formatPullRequestBody(input: GitHubPullRequestInput): string {
