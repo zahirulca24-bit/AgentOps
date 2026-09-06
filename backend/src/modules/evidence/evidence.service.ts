@@ -102,7 +102,7 @@ export class EvidenceService {
     try {
       const content = await fs.readFile(fullPath);
       return { content, filePath: fullPath };
-    } catch (err) {
+    } catch {
       throw new AppError('NOT_FOUND', `Failed to read evidence file ${evidenceId}`, 404);
     }
   }
