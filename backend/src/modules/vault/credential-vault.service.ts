@@ -173,7 +173,7 @@ export class CredentialBrokerService {
     // 4. Status check
     if (record.status !== 'active') {
       throw new AppError(
-        'BAD_REQUEST',
+        'VALIDATION_ERROR',
         `Secret reference '${secretRef}' is '${record.status}' and cannot be resolved for execution`,
         400
       );

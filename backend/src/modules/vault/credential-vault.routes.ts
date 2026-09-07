@@ -5,10 +5,10 @@ import {
   resolveCredentialSchema,
   rotateSecretSchema,
   revokeSecretSchema,
-} from './credential-vault.schema.ts';
+} from './credential-vault.schema.js';
 
 export async function credentialVaultRoutes(app: FastifyInstance) {
-  const service = new CredentialBrokerService(app.db);
+  const service = new CredentialBrokerService((app as any).db);
 
   // Store a secret in the vault (returns secretRef)
   app.post('/api/v1/vault/secrets', async (request, reply) => {

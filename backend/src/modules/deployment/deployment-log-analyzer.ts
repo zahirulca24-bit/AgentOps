@@ -60,7 +60,7 @@ export class DeploymentLogAnalyzer {
 
     let rootCause = '';
     let summary = '';
-    let recommendation = '';
+    let recommendation: string | undefined = '';
 
     if (outcome === 'PASS') {
       rootCause = 'No deployment build or runtime errors detected.';

@@ -33,7 +33,7 @@ export const getDeploymentStatusSchema = z.object({
 export const analyzeDeploymentLogsBodySchema = z.object({
   deploymentId: z.string().optional(),
   runId: z.string().optional(),
-  logs: z.string({ required_error: 'Build/runtime logs string is required' }),
+  logs: z.string().min(1, 'Build/runtime logs string is required'),
   provider: z.enum(['render', 'vercel']).optional(),
   branchName: z.string().optional(),
 });

@@ -98,52 +98,6 @@ export class RenderDeploymentProvider implements DeploymentProvider {
       createdAt: now,
       updatedAt: now,
     };
-
-    if (!params.imageUrl) {
-      throw new AppError(
-        'VALIDATION_ERROR',
-        'Render API can only create service previews for image-backed services. Provide imageUrl, or use Render native PR previews for Git-backed services.',
-        400
-      );
-    }
-
-    const response = await fetch(`https://api.render.com/v1/services/${encodeURIComponent(serviceId)}/preview`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify({
-        imagePath: params.imageUrl,
-        name: `preview-${params.branchName.replace(/[^a-zA-Z0-9-]/g, '-').slice(0, 40)}`,
-      }),
-    });
-
-    const data: any = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new AppError('ACTION_FAILED', redactString(data?.message || data?.error || `Render API error ${response.status}`), 502);
-    }
-
-    const deploymentId = String(data?.id || data?.service?.id || data?.preview?.id || '');
-    if (!deploymentId) throw new AppError('ACTION_FAILED', 'Render preview response did not include an id', 502);
-
-    const previewUrl = data?.serviceDetails?.url || data?.url || data?.service?.serviceDetails?.url || null;
-    const status = mapRenderStatus(data?.status || data?.service?.status);
-
-    return {
-      deploymentId,
-      provider: 'render',
-      status,
-      previewUrl,
-      logsUrl: `https://dashboard.render.com/web/${deploymentId}`,
-      buildLogs: '[BUILD LOGS] Render preview creation accepted by provider',
-      errorDetails: null,
-      branchName: params.branchName,
-      prNumber: params.prNumber || null,
-      createdAt: now,
-      updatedAt: now,
-    };
   }
 
   public async getDeploymentStatus(deploymentId: string, params: PreviewDeploymentParams): Promise<PreviewDeploymentResult> {

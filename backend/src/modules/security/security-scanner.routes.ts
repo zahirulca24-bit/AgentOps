@@ -1,9 +1,9 @@
 import { FastifyInstance } from 'fastify';
 import { SecurityScannerService } from './security-scanner.service.js';
-import { runSecurityScanSchema } from './security-scanner.schema.ts';
+import { runSecurityScanSchema } from './security-scanner.schema.js';
 
 export async function securityScannerRoutes(app: FastifyInstance) {
-  const service = new SecurityScannerService(app.db);
+  const service = new SecurityScannerService((app as any).db);
 
   // Run automated security scan
   app.post('/api/v1/security/scan', async (request, reply) => {

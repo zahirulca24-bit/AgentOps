@@ -35,8 +35,8 @@ export const runSecurityScanSchema = z.object({
   target: z.string().trim().min(1, 'Scan target is required'),
   scanType: scanTypeEnum.optional().default('full'),
   content: z.string().optional(),
-  headers: z.record(z.string()).optional(),
-  metadata: z.record(z.any()).optional(),
+  headers: z.record(z.string(), z.string()).optional(),
+  metadata: z.record(z.string(), z.any()).optional(),
 });
 export type RunSecurityScanInput = z.infer<typeof runSecurityScanSchema>;
 

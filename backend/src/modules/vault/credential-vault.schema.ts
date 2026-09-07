@@ -11,7 +11,7 @@ export const storeSecretSchema = z.object({
   provider: credentialProviderEnum,
   secretValue: z.string().min(1, 'Secret value is required'),
   description: z.string().optional(),
-  metadata: z.record(z.any()).optional(),
+  metadata: z.record(z.string(), z.any()).optional(),
 });
 export type StoreSecretInput = z.infer<typeof storeSecretSchema>;
 

@@ -1,9 +1,9 @@
 import { FastifyInstance } from 'fastify';
 import { DatabaseAgentService } from './database-agent.service.js';
-import { executeQuerySchema, executeMigrationSchema } from './database-agent.schema.ts';
+import { executeQuerySchema, executeMigrationSchema } from './database-agent.schema.js';
 
 export async function databaseAgentRoutes(app: FastifyInstance) {
-  const service = new DatabaseAgentService(app.db);
+  const service = new DatabaseAgentService((app as any).db);
 
   // Inspect database schema metadata
   app.get('/api/v1/database/schema', async (_request, reply) => {

@@ -46,7 +46,7 @@ export const deploymentLogAnalysisSchema = z.object({
 export const analyzeLogsInputSchema = z.object({
   deploymentId: z.string().optional(),
   runId: z.string().optional(),
-  logs: z.string({ required_error: 'Logs string is required for analysis' }),
+  logs: z.string().min(1, 'Logs string is required for analysis'),
   provider: z.enum(['render', 'vercel']).optional(),
   branchName: z.string().optional(),
 });

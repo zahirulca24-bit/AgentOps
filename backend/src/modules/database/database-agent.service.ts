@@ -159,7 +159,7 @@ export class DatabaseAgentService {
     // Check for dangerous DDL operations
     if (/\b(?:DROP|TRUNCATE|GRANT|REVOKE|VACUUM\s+FULL)\b/i.test(upper)) {
       throw new AppError(
-        'BAD_REQUEST',
+        'VALIDATION_ERROR',
         'Dangerous query blocked: DDL statements like DROP, TRUNCATE, GRANT, or VACUUM FULL cannot be executed directly via normal query endpoints. Use /api/v1/database/migrate with human approval.',
         400
       );
@@ -168,7 +168,7 @@ export class DatabaseAgentService {
     // Check for un-WHERE'd DELETE
     if (/\bDELETE\s+FROM\s+[a-zA-Z0-9_]+\s*$/i.test(upper) || (upper.includes('DELETE FROM') && !upper.includes('WHERE'))) {
       throw new AppError(
-        'BAD_REQUEST',
+        'VALIDATION_ERROR',
         'Dangerous query blocked: DELETE query without a WHERE clause is prohibited to prevent accidental mass deletion.',
         400
       );
@@ -177,7 +177,7 @@ export class DatabaseAgentService {
     // Check for un-WHERE'd UPDATE
     if (upper.startsWith('UPDATE') && !upper.includes('WHERE')) {
       throw new AppError(
-        'BAD_REQUEST',
+        'VALIDATION_ERROR',
         'Dangerous query blocked: UPDATE query without a WHERE clause is prohibited to prevent accidental mass overwrite.',
         400
       );
@@ -235,7 +235,7 @@ export class DatabaseAgentService {
           fields = Object.keys(rows[0]);
         }
       } catch (err: any) {
-        throw new AppError('BAD_REQUEST', `SQL execution error: ${redactString(err.message || 'Syntax error')}`, 400);
+        throw new AppError('ACTION_FAILED', `SQL execution error: ${redactString(err.message || 'Syntax error')}`, 400);
       }
     } else {
       // Mock execution results based on query type
@@ -337,7 +337,7 @@ export class DatabaseAgentService {
       try {
         await this.db.execute(drizzleSql.raw(migrationSql));
       } catch (err: any) {
-        throw new AppError('BAD_REQUEST', `Migration execution error: ${redactString(err.message || 'DDL error')}`, 400);
+        throw new AppError('ACTION_FAILED', `Migration execution error: ${redactString(err.message || 'DDL error')}`, 400);
       }
     }
 
