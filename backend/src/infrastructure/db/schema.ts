@@ -229,7 +229,6 @@ export const productionDeployments = pgTable('production_deployments', {
   productionUrl: varchar('production_url', { length: 2048 }),
   logsUrl: varchar('logs_url', { length: 2048 }),
   buildLogs: text('build_logs'),
-  errorDetails: text('error_details'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (table) => {
@@ -238,6 +237,27 @@ export const productionDeployments = pgTable('production_deployments', {
     approvalStatusIdx: index('production_deployments_approval_status_idx').on(table.approvalStatus),
   };
 });
+
+export const deploymentRollbacks = pgTable('deployment_rollbacks', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  targetProductionId: uuid('target_production_id').references(() => productionDeployments.id, { onDelete: 'cascade' }),
+  restoredProductionId: uuid('restored_production_id').references(() => productionDeployments.id, { onDelete: 'set null' }),
+  mode: varchar('mode', { length: 50 }).notNull().default('automatic'), // 'automatic' | 'manual'
+  status: varchar('status', { length: 50 }).notNull().default('initiated'), // 'initiated' | 'restoring' | 'restored' | 'failed'
+  rollbackReason: text('rollback_reason').notNull(),
+  initiatedBy: varchar('initiated_by', { length: 255 }),
+  approvedBy: varchar('approved_by', { length: 255 }),
+  restoredUrl: varchar('restored_url', { length: 2048 }),
+  rollbackLogs: text('rollback_logs'),
+  errorDetails: text('error_details'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => {
+  return {
+    targetProductionIdIdx: index('deployment_rollbacks_target_id_idx').on(table.targetProductionId),
+  };
+});
+
 
 // Relationships
 export const projectsRelations = relations(projects, ({ many }) => ({

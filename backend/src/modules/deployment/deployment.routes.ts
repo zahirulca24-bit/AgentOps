@@ -15,6 +15,7 @@ import {
   approveProductionDeploymentSchema,
   executeProductionDeploymentSchema,
 } from './production-deployment.schema.js';
+import { autoRollbackSchema, manualRollbackSchema } from './rollback.schema.js';
 
 export async function deploymentRoutes(
   fastify: FastifyInstance,
@@ -22,6 +23,7 @@ export async function deploymentRoutes(
 ) {
   const deploymentService = new PreviewDeploymentService(options.db, options.aiProvider);
   const prodService = deploymentService.productionDeploymentService;
+  const rollbackService = prodService.rollbackService;
 
   // POST /api/v1/deployments/preview - Trigger Preview Deployment
   fastify.post('/api/v1/deployments/preview', async (request: FastifyRequest, reply: FastifyReply) => {
@@ -123,7 +125,7 @@ export async function deploymentRoutes(
     return reply.send({ data: summary });
   });
 
-  // POST /api/v1/deployments/production/request - Request Production Deployment (Requires Preview Ready & QA Pass)
+  // POST /api/v1/deployments/production/request - Request Production Deployment
   fastify.post('/api/v1/deployments/production/request', async (request: FastifyRequest, reply: FastifyReply) => {
     const parseResult = requestProductionDeploymentSchema.safeParse(request.body);
     if (!parseResult.success) {
@@ -175,6 +177,54 @@ export async function deploymentRoutes(
   // GET /api/v1/deployments/production - List Production Deployments
   fastify.get('/api/v1/deployments/production', async (request: FastifyRequest, reply: FastifyReply) => {
     const list = await prodService.listProductionDeployments();
+    return reply.send({ data: list });
+  });
+
+  // POST /api/v1/deployments/rollback/auto - Trigger Automatic Emergency Rollback
+  fastify.post('/api/v1/deployments/rollback/auto', async (request: FastifyRequest, reply: FastifyReply) => {
+    const parseResult = autoRollbackSchema.safeParse(request.body);
+    if (!parseResult.success) {
+      const errMsg = parseResult.error.issues[0]?.message || 'Invalid auto rollback payload';
+      throw new AppError('VALIDATION_ERROR', errMsg, 400);
+    }
+
+    const result = await rollbackService.executeAutoRollback(parseResult.data);
+    return reply.status(200).send({ data: result });
+  });
+
+  // POST /api/v1/deployments/rollback/manual - Trigger Manual Rollback (Human Approval Enforced)
+  fastify.post('/api/v1/deployments/rollback/manual', async (request: FastifyRequest, reply: FastifyReply) => {
+    const parseResult = manualRollbackSchema.safeParse(request.body);
+    if (!parseResult.success) {
+      const errMsg = parseResult.error.issues[0]?.message || 'Invalid manual rollback payload';
+      throw new AppError('VALIDATION_ERROR', errMsg, 400);
+    }
+
+    const result = await rollbackService.executeManualRollback(parseResult.data);
+    return reply.status(200).send({ data: result });
+  });
+
+  // GET /api/v1/deployments/rollback/stable - Get Previous Stable Production Deployment
+  fastify.get('/api/v1/deployments/rollback/stable', async (request: FastifyRequest, reply: FastifyReply) => {
+    const stable = await rollbackService.getPreviousStableDeployment();
+    return reply.send({ data: stable });
+  });
+
+  // GET /api/v1/deployments/rollback/:id - Get Rollback Details by ID
+  fastify.get('/api/v1/deployments/rollback/:id', async (request: FastifyRequest, reply: FastifyReply) => {
+    const paramsSchema = z.object({ id: z.string().min(1) });
+    const paramParse = paramsSchema.safeParse(request.params);
+    if (!paramParse.success) {
+      throw new AppError('VALIDATION_ERROR', 'Invalid rollback ID format', 400);
+    }
+
+    const result = await rollbackService.getRollbackStatus(paramParse.data.id);
+    return reply.send({ data: result });
+  });
+
+  // GET /api/v1/deployments/rollback - List All Rollbacks
+  fastify.get('/api/v1/deployments/rollback', async (request: FastifyRequest, reply: FastifyReply) => {
+    const list = await rollbackService.listRollbacks();
     return reply.send({ data: list });
   });
 }

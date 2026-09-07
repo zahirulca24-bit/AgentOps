@@ -8,6 +8,7 @@ import { RenderDeploymentProvider } from './providers/render-provider.js';
 import { VercelDeploymentProvider } from './providers/vercel-provider.js';
 import { DeploymentProvider, DeploymentProviderType } from './deployment.provider.js';
 import { PostDeploymentQAService } from './post-deployment-qa.service.js';
+import { RollbackService } from './rollback.service.js';
 import {
   RequestProductionDeploymentInput,
   ApproveProductionDeploymentInput,
@@ -35,12 +36,14 @@ export interface ProductionDeploymentResult {
 export class ProductionDeploymentService {
   private providers = new Map<DeploymentProviderType, DeploymentProvider>();
   private postDeploymentQA: PostDeploymentQAService;
+  public rollbackService: RollbackService;
   private mockDeployments = new Map<string, ProductionDeploymentResult>();
 
   constructor(private db?: Database) {
     this.providers.set('render', new RenderDeploymentProvider());
     this.providers.set('vercel', new VercelDeploymentProvider());
     this.postDeploymentQA = new PostDeploymentQAService(db);
+    this.rollbackService = new RollbackService(db);
   }
 
   public async requestProductionDeployment(
@@ -291,6 +294,14 @@ export class ProductionDeploymentService {
         productionDeploymentId,
         { errorDetails: errorMsg }
       );
+
+      // Auto-Trigger Emergency Rollback upon production deployment failure
+      try {
+        await this.rollbackService.executeAutoRollback({
+          targetProductionId: productionDeploymentId,
+          reason: errorMsg,
+        });
+      } catch {}
 
       return record;
     }
