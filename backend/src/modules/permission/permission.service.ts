@@ -112,14 +112,18 @@ export class PermissionEngineService {
       // Red tier always requires human approval
       let isApproved = false;
       try {
-        isApproved = await this.approvalService.verifyApproval('SECURITY_CREDENTIAL_ROTATION', resourceId);
+        isApproved = await this.approvalService.verifyApproval('DATABASE_MIGRATION', resourceId);
       } catch {
         try {
-          isApproved = await this.approvalService.verifyApproval('PRODUCTION_DEPLOYMENT', resourceId);
+          isApproved = await this.approvalService.verifyApproval('SECURITY_CREDENTIAL_ROTATION', resourceId);
         } catch {
           try {
-            isApproved = await this.approvalService.verifyApproval('MANUAL_ROLLBACK', resourceId);
-          } catch {}
+            isApproved = await this.approvalService.verifyApproval('PRODUCTION_DEPLOYMENT', resourceId);
+          } catch {
+            try {
+              isApproved = await this.approvalService.verifyApproval('MANUAL_ROLLBACK', resourceId);
+            } catch {}
+          }
         }
       }
 

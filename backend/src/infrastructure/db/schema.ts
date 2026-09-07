@@ -332,6 +332,23 @@ export const securityScans = pgTable('security_scans', {
   };
 });
 
+export const databaseQueryLogs = pgTable('database_query_logs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sqlQuery: text('sql_query').notNull(),
+  queryType: varchar('query_type', { length: 50 }).notNull(), // 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE' | 'DDL'
+  permissionTier: varchar('permission_tier', { length: 20 }).notNull(), // 'Green' | 'Yellow' | 'Red'
+  status: varchar('status', { length: 50 }).notNull(), // 'executed' | 'blocked' | 'failed'
+  rowCount: integer('row_count').default(0),
+  executionTimeMs: integer('execution_time_ms').default(0),
+  actor: varchar('actor', { length: 255 }).notNull(),
+  executedAt: timestamp('executed_at').notNull().defaultNow(),
+}, (table) => {
+  return {
+    queryTypeIdx: index('db_query_logs_type_idx').on(table.queryType),
+    actorIdx: index('db_query_logs_actor_idx').on(table.actor),
+  };
+});
+
 
 
 

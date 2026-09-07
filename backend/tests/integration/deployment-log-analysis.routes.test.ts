@@ -60,6 +60,10 @@ Command 'npm run build' exited with code 1.
         provider: 'vercel',
         branchName: 'feat/preview-with-analysis',
         runId: mockRunId,
+        repoOwner: 'zahirulca24-bit',
+        repoName: 'AgentOps',
+        apiToken: 'dummy_vercel_token',
+        imageUrl: 'docker.io/app:latest',
       };
 
       const response = await app.inject({

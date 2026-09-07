@@ -109,6 +109,7 @@ FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memor
         branchName: 'agentops/task-qa-401',
         runId: mockRunId,
         apiToken: 'secret_token_123',
+        imageUrl: 'docker.io/img:latest',
       });
 
       expect(result.runId).toBe(mockRunId);
