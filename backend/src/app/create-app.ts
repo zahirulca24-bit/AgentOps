@@ -21,6 +21,7 @@ import { selfFixRoutes } from '../modules/self-fix/self-fix.routes.js';
 import { deploymentRoutes } from '../modules/deployment/deployment.routes.js';
 import { approvalRoutes } from '../modules/approval/approval.routes.js';
 import { permissionRoutes } from '../modules/permission/permission.routes.js';
+import { credentialVaultRoutes } from '../modules/vault/credential-vault.routes.js';
 
 export async function createApp(config: EnvConfig) {
   const dbClient = createDbClient(config);
@@ -152,6 +153,7 @@ export async function createApp(config: EnvConfig) {
   await app.register(deploymentRoutes, { db: dbClient.db });
   await app.register(approvalRoutes, { db: dbClient.db });
   await app.register(permissionRoutes, { db: dbClient.db });
+  await app.register(credentialVaultRoutes);
 
 
   // Close database connection gracefully

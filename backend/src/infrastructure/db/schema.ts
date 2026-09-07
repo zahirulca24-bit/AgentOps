@@ -293,6 +293,25 @@ export const permissionDecisions = pgTable('permission_decisions', {
   };
 });
 
+export const vaultCredentials = pgTable('vault_credentials', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  secretRef: varchar('secret_ref', { length: 255 }).notNull().unique(),
+  provider: varchar('provider', { length: 50 }).notNull(), // 'render' | 'vercel' | 'github' | 'gcp' | 'generic'
+  encryptedValue: text('encrypted_value').notNull(),
+  version: integer('version').notNull().default(1),
+  status: varchar('status', { length: 50 }).notNull().default('active'), // 'active' | 'rotated' | 'revoked'
+  description: text('description'),
+  metadata: jsonb('metadata'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => {
+  return {
+    secretRefIdx: index('vault_credentials_secret_ref_idx').on(table.secretRef),
+    providerIdx: index('vault_credentials_provider_idx').on(table.provider),
+    statusIdx: index('vault_credentials_status_idx').on(table.status),
+  };
+});
+
 
 
 

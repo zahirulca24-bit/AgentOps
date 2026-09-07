@@ -22,6 +22,14 @@ const SENSITIVE_PATTERNS = [
   /github_pat_[A-Za-z0-9_]{80,}/gi,
 ];
 
+const DYNAMIC_SECRET_STRINGS = new Set<string>();
+
+export function registerDynamicSecret(secret: string): void {
+  if (secret && typeof secret === 'string' && secret.trim().length >= 4) {
+    DYNAMIC_SECRET_STRINGS.add(secret.trim());
+  }
+}
+
 const SENSITIVE_KEYS = new Set([
   'authorization',
   'cookie',
@@ -48,6 +56,13 @@ export function redactString(input: string): string {
 
   let redacted = input;
 
+  // Redact dynamically registered vault secrets first
+  for (const dynamicSec of DYNAMIC_SECRET_STRINGS) {
+    if (dynamicSec && redacted.includes(dynamicSec)) {
+      redacted = redacted.replaceAll(dynamicSec, '[REDACTED_VAULT_SECRET]');
+    }
+  }
+
   // Redact DB URLs
   redacted = redacted.replace(/(postgres(?:ql)?|mysql|mongodb(?:\+srv)?):\/\/([^:]+):([^@]+)@/gi, '$1://$2:[REDACTED]@');
 
@@ -70,6 +85,13 @@ export function redactString(input: string): string {
 
   // Redact JWT tokens
   redacted = redacted.replace(/eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/gi, '[REDACTED_JWT]');
+
+  // Redact dynamically registered vault secrets
+  for (const dynamicSec of DYNAMIC_SECRET_STRINGS) {
+    if (dynamicSec && redacted.includes(dynamicSec)) {
+      redacted = redacted.replaceAll(dynamicSec, '[REDACTED_VAULT_SECRET]');
+    }
+  }
 
   return redacted;
 }

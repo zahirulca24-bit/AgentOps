@@ -27,7 +27,7 @@ export interface ApprovalRequestResult {
 }
 
 export class HumanApprovalService {
-  private mockApprovals = new Map<string, ApprovalRequestResult>();
+  private static mockApprovals = new Map<string, ApprovalRequestResult>();
 
   constructor(private db?: Database) {}
 
@@ -68,7 +68,7 @@ export class HumanApprovalService {
       } catch {}
     }
 
-    this.mockApprovals.set(approvalId, result);
+    HumanApprovalService.mockApprovals.set(approvalId, result);
 
     AuditLoggerService.log(
       'HUMAN_APPROVAL_REQUESTED',
@@ -112,7 +112,7 @@ export class HumanApprovalService {
       } catch {}
     }
 
-    this.mockApprovals.set(id, record);
+    HumanApprovalService.mockApprovals.set(id, record);
 
     AuditLoggerService.log(
       'HUMAN_APPROVAL_GRANTED',
@@ -156,7 +156,7 @@ export class HumanApprovalService {
       } catch {}
     }
 
-    this.mockApprovals.set(id, record);
+    HumanApprovalService.mockApprovals.set(id, record);
 
     AuditLoggerService.log(
       'HUMAN_APPROVAL_REJECTED',
@@ -170,7 +170,7 @@ export class HumanApprovalService {
   }
 
   public async verifyApproval(actionCategory: CriticalActionCategory, resourceId?: string): Promise<boolean> {
-    const pending = Array.from(this.mockApprovals.values()).find(
+    const pending = Array.from(HumanApprovalService.mockApprovals.values()).find(
       r => r.actionCategory === actionCategory && (!resourceId || r.resourceId === resourceId) && r.status === 'approved'
     );
 
@@ -194,7 +194,7 @@ export class HumanApprovalService {
   }
 
   public async getApprovalRequest(id: string): Promise<ApprovalRequestResult> {
-    let record = this.mockApprovals.get(id);
+    let record = HumanApprovalService.mockApprovals.get(id);
 
     if (!record && this.db) {
       try {
@@ -248,10 +248,10 @@ export class HumanApprovalService {
           updatedAt: r.updatedAt ? new Date(r.updatedAt).toISOString() : new Date().toISOString(),
         }));
       } catch {
-        list = Array.from(this.mockApprovals.values());
+        list = Array.from(HumanApprovalService.mockApprovals.values());
       }
     } else {
-      list = Array.from(this.mockApprovals.values());
+      list = Array.from(HumanApprovalService.mockApprovals.values());
     }
 
     if (filter?.status) {
