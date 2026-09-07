@@ -19,6 +19,11 @@ import { githubRoutes } from '../modules/github/github.routes.js';
 import { runnerRoutes } from '../modules/runner/runner.routes.js';
 import { selfFixRoutes } from '../modules/self-fix/self-fix.routes.js';
 import { deploymentRoutes } from '../modules/deployment/deployment.routes.js';
+import { approvalRoutes } from '../modules/approval/approval.routes.js';
+import { permissionRoutes } from '../modules/permission/permission.routes.js';
+import { credentialVaultRoutes } from '../modules/vault/credential-vault.routes.js';
+import { securityScannerRoutes } from '../modules/security/security-scanner.routes.js';
+import { databaseAgentRoutes } from '../modules/database/database-agent.routes.js';
 
 export async function createApp(config: EnvConfig) {
   const dbClient = createDbClient(config);
@@ -149,6 +154,11 @@ export async function createApp(config: EnvConfig) {
   await app.register(runnerRoutes, { prefix: '/api/v1/fix-runner' });
   await app.register(selfFixRoutes, { prefix: '/api/v1/issues', db: dbClient.db, aiProvider });
   await app.register(deploymentRoutes, { db: dbClient.db });
+  await app.register(approvalRoutes, { db: dbClient.db });
+  await app.register(permissionRoutes, { db: dbClient.db });
+  await app.register(credentialVaultRoutes);
+  await app.register(securityScannerRoutes);
+  await app.register(databaseAgentRoutes);
 
   // Close database connection gracefully
   app.addHook('onClose', async () => {

@@ -195,6 +195,7 @@ export const githubConfigs = pgTable('github_configs', {
 export const previewDeployments = pgTable('preview_deployments', {
   id: uuid('id').primaryKey().defaultRandom(),
   projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+  runId: uuid('run_id').references(() => runs.id, { onDelete: 'set null' }),
   provider: varchar('provider', { length: 50 }).notNull(),
   branchName: varchar('branch_name', { length: 255 }).notNull(),
   prNumber: integer('pr_number'),
@@ -203,14 +204,153 @@ export const previewDeployments = pgTable('preview_deployments', {
   logsUrl: varchar('logs_url', { length: 2048 }),
   buildLogs: text('build_logs'),
   errorDetails: text('error_details'),
+  logAnalysis: jsonb('log_analysis'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (table) => {
   return {
     projectIdIdx: index('preview_deployments_project_id_idx').on(table.projectId),
+    runIdIdx: index('preview_deployments_run_id_idx').on(table.runId),
     branchNameIdx: index('preview_deployments_branch_name_idx').on(table.branchName),
   };
 });
+
+export const productionDeployments = pgTable('production_deployments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  previewDeploymentId: uuid('preview_deployment_id').references(() => previewDeployments.id, { onDelete: 'cascade' }),
+  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+  provider: varchar('provider', { length: 50 }).notNull(),
+  branchName: varchar('branch_name', { length: 255 }).notNull(),
+  status: varchar('status', { length: 50 }).notNull().default('pending_approval'),
+  approvalStatus: varchar('approval_status', { length: 50 }).notNull().default('pending'),
+  approvedBy: varchar('approved_by', { length: 255 }),
+  approvedAt: timestamp('approved_at'),
+  rejectionReason: text('rejection_reason'),
+  productionUrl: varchar('production_url', { length: 2048 }),
+  logsUrl: varchar('logs_url', { length: 2048 }),
+  buildLogs: text('build_logs'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => {
+  return {
+    previewDeploymentIdIdx: index('production_deployments_preview_id_idx').on(table.previewDeploymentId),
+    approvalStatusIdx: index('production_deployments_approval_status_idx').on(table.approvalStatus),
+  };
+});
+
+export const deploymentRollbacks = pgTable('deployment_rollbacks', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  targetProductionId: uuid('target_production_id').references(() => productionDeployments.id, { onDelete: 'cascade' }),
+  restoredProductionId: uuid('restored_production_id').references(() => productionDeployments.id, { onDelete: 'set null' }),
+  mode: varchar('mode', { length: 50 }).notNull().default('automatic'), // 'automatic' | 'manual'
+  status: varchar('status', { length: 50 }).notNull().default('initiated'), // 'initiated' | 'restoring' | 'restored' | 'failed'
+  rollbackReason: text('rollback_reason').notNull(),
+  initiatedBy: varchar('initiated_by', { length: 255 }),
+  approvedBy: varchar('approved_by', { length: 255 }),
+  restoredUrl: varchar('restored_url', { length: 2048 }),
+  rollbackLogs: text('rollback_logs'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => {
+  return {
+    targetProductionIdIdx: index('deployment_rollbacks_target_id_idx').on(table.targetProductionId),
+  };
+});
+
+export const approvalRequests = pgTable('approval_requests', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  actionCategory: varchar('action_category', { length: 100 }).notNull(), // 'PRODUCTION_DEPLOYMENT' | 'MANUAL_ROLLBACK' | 'DATABASE_MIGRATION' | 'SECURITY_CREDENTIAL_ROTATION' | 'DESTRUCTIVE_INFRA_ACTION'
+  status: varchar('status', { length: 50 }).notNull().default('pending'), // 'pending' | 'approved' | 'rejected' | 'expired'
+  resourceId: varchar('resource_id', { length: 255 }),
+  actionSummary: text('action_summary').notNull(),
+  requestedBy: varchar('requested_by', { length: 255 }).notNull(),
+  approvedBy: varchar('approved_by', { length: 255 }),
+  reason: text('reason'),
+  requestedAt: timestamp('requested_at').notNull().defaultNow(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => {
+  return {
+    actionCategoryIdx: index('approval_requests_category_idx').on(table.actionCategory),
+    statusIdx: index('approval_requests_status_idx').on(table.status),
+  };
+});
+
+export const permissionDecisions = pgTable('permission_decisions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  action: varchar('action', { length: 255 }).notNull(),
+  tier: varchar('tier', { length: 20 }).notNull(), // 'Green' | 'Yellow' | 'Red'
+  decision: varchar('decision', { length: 50 }).notNull(), // 'allow' | 'policy_approval_required' | 'human_approval_required' | 'deny'
+  actor: varchar('actor', { length: 255 }).notNull(),
+  resourceId: varchar('resource_id', { length: 255 }),
+  reason: text('reason'),
+  evaluatedAt: timestamp('evaluated_at').notNull().defaultNow(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => {
+  return {
+    actionIdx: index('permission_decisions_action_idx').on(table.action),
+    tierIdx: index('permission_decisions_tier_idx').on(table.tier),
+  };
+});
+
+export const vaultCredentials = pgTable('vault_credentials', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  secretRef: varchar('secret_ref', { length: 255 }).notNull().unique(),
+  provider: varchar('provider', { length: 50 }).notNull(), // 'render' | 'vercel' | 'github' | 'gcp' | 'generic'
+  encryptedValue: text('encrypted_value').notNull(),
+  version: integer('version').notNull().default(1),
+  status: varchar('status', { length: 50 }).notNull().default('active'), // 'active' | 'rotated' | 'revoked'
+  description: text('description'),
+  metadata: jsonb('metadata'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => {
+  return {
+    secretRefIdx: index('vault_credentials_secret_ref_idx').on(table.secretRef),
+    providerIdx: index('vault_credentials_provider_idx').on(table.provider),
+    statusIdx: index('vault_credentials_status_idx').on(table.status),
+  };
+});
+
+export const securityScans = pgTable('security_scans', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  target: varchar('target', { length: 2048 }).notNull(),
+  scanType: varchar('scan_type', { length: 50 }).notNull().default('full'), // 'full' | 'secret' | 'dependency' | 'code' | 'headers' | 'prompt'
+  status: varchar('status', { length: 50 }).notNull().default('completed'), // 'passed' | 'failed' | 'completed'
+  criticalCount: integer('critical_count').notNull().default(0),
+  highCount: integer('high_count').notNull().default(0),
+  mediumCount: integer('medium_count').notNull().default(0),
+  lowCount: integer('low_count').notNull().default(0),
+  totalFindings: integer('total_findings').notNull().default(0),
+  findings: jsonb('findings').notNull(),
+  scannedAt: timestamp('scanned_at').notNull().defaultNow(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => {
+  return {
+    targetIdx: index('security_scans_target_idx').on(table.target),
+    statusIdx: index('security_scans_status_idx').on(table.status),
+  };
+});
+
+export const databaseQueryLogs = pgTable('database_query_logs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sqlQuery: text('sql_query').notNull(),
+  queryType: varchar('query_type', { length: 50 }).notNull(), // 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE' | 'DDL'
+  permissionTier: varchar('permission_tier', { length: 20 }).notNull(), // 'Green' | 'Yellow' | 'Red'
+  status: varchar('status', { length: 50 }).notNull(), // 'executed' | 'blocked' | 'failed'
+  rowCount: integer('row_count').default(0),
+  executionTimeMs: integer('execution_time_ms').default(0),
+  actor: varchar('actor', { length: 255 }).notNull(),
+  executedAt: timestamp('executed_at').notNull().defaultNow(),
+}, (table) => {
+  return {
+    queryTypeIdx: index('db_query_logs_type_idx').on(table.queryType),
+    actorIdx: index('db_query_logs_actor_idx').on(table.actor),
+  };
+});
+
+
+
 
 // Relationships
 export const projectsRelations = relations(projects, ({ many }) => ({

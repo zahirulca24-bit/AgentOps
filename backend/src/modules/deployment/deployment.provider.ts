@@ -4,6 +4,7 @@ export type DeploymentStatus = 'building' | 'ready' | 'failed' | 'cancelled';
 export interface PreviewDeploymentParams {
   provider: DeploymentProviderType;
   branchName: string;
+  runId?: string;
   repoOwner?: string;
   repoName?: string;
   prNumber?: number;
@@ -22,10 +23,12 @@ export interface PreviewDeploymentResult {
   deploymentId: string;
   provider: DeploymentProviderType;
   status: DeploymentStatus;
+  runId?: string | null;
   previewUrl?: string | null;
   logsUrl?: string | null;
   buildLogs?: string;
   errorDetails?: string | null;
+  logAnalysis?: any | null;
   branchName: string;
   prNumber?: number | null;
   createdAt: string;
