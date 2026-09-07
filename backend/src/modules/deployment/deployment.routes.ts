@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type { Database } from '../../infrastructure/db/client.js';
 import { AppError } from '../../core/errors.js';
-import { PreviewDeploymentService } from './deployment.service.ts';
+import { PreviewDeploymentService } from './deployment.service.js';
 import { createPreviewDeploymentSchema, getDeploymentStatusSchema } from './deployment.schema.js';
 
 export async function deploymentRoutes(
