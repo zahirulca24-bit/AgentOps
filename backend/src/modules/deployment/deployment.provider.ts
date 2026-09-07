@@ -12,6 +12,7 @@ export interface PreviewDeploymentParams {
   serviceId?: string;
   projectId?: string;
   teamId?: string;
+  imageUrl?: string;
   customDomain?: string;
   environmentVars?: Record<string, string>;
   simulateFailure?: boolean;
