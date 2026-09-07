@@ -3,9 +3,18 @@ import {
   DeploymentProviderType,
   PreviewDeploymentParams,
   PreviewDeploymentResult,
+  DeploymentStatus,
 } from '../deployment.provider.js';
 import { AppError } from '../../../core/errors.js';
 import { redactString } from '../../../infrastructure/redact/redactSensitive.js';
+
+function mapVercelStatus(status?: string): DeploymentStatus {
+  const value = (status || '').toUpperCase();
+  if (value === 'READY') return 'ready';
+  if (['ERROR', 'FAILED'].includes(value)) return 'failed';
+  if (['CANCELED', 'CANCELLED'].includes(value)) return 'cancelled';
+  return 'building';
+}
 
 export class VercelDeploymentProvider implements DeploymentProvider {
   public readonly providerType: DeploymentProviderType = 'vercel';
@@ -16,31 +25,29 @@ export class VercelDeploymentProvider implements DeploymentProvider {
     }
     const normalized = branchName.trim().toLowerCase();
     if (['main', 'master', 'production', 'release'].includes(normalized)) {
-      throw new AppError(
-        'FORBIDDEN',
-        `Direct preview deployments on production branch '${branchName.trim()}' are strictly blocked. Every preview deployment must target a task/feature branch or PR.`,
-        403
-      );
+      throw new AppError('FORBIDDEN', `Direct preview deployments on production branch '${branchName.trim()}' are strictly blocked.`, 403);
     }
+  }
+
+  private requireConfig(params: PreviewDeploymentParams): string {
+    if (!params.apiToken) throw new AppError('VALIDATION_ERROR', 'Vercel preview requires apiToken', 400);
+    if (!params.repoOwner || !params.repoName) throw new AppError('VALIDATION_ERROR', 'Vercel preview requires repoOwner and repoName', 400);
+    return params.apiToken;
   }
 
   public async createPreviewDeployment(params: PreviewDeploymentParams): Promise<PreviewDeploymentResult> {
     this.validateBranchPolicy(params.branchName);
-
     const now = new Date().toISOString();
-    const branchSlug = params.branchName.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-');
-    const deploymentId = `dpl_${Math.random().toString(36).substring(2, 12)}`;
 
     if (params.simulateFailure) {
-      const errorMsg = redactString(`[Vercel Provider] Deployment build error on branch '${params.branchName}': Command 'next build' exited with status 1. Token: ${params.apiToken || 'N/A'}`);
       return {
-        deploymentId,
+        deploymentId: `dpl_failed_${Date.now()}`,
         provider: 'vercel',
         status: 'failed',
         previewUrl: null,
-        logsUrl: `https://vercel.com/logs/${deploymentId}`,
-        buildLogs: redactString(`[VERCEL BUILD LOGS] Cloning repository branch '${params.branchName}'...\nRunning build command...\nError: Compilation failed.\n${errorMsg}`),
-        errorDetails: errorMsg,
+        logsUrl: null,
+        buildLogs: '[VERCEL BUILD LOGS] Simulated Vercel preview failure',
+        errorDetails: 'Simulated Vercel preview failure',
         branchName: params.branchName,
         prNumber: params.prNumber || null,
         createdAt: now,
@@ -48,60 +55,81 @@ export class VercelDeploymentProvider implements DeploymentProvider {
       };
     }
 
-    const previewUrl = `https://agentops-${branchSlug}.vercel.app`;
-    const buildLogs = redactString(`[VERCEL BUILD LOGS] Vercel Preview Deployment initialized for branch '${params.branchName}'.\n[1/3] Fetching branch metadata...\n[2/3] Building static assets...\n[3/3] Deployed to ${previewUrl}`);
+    const token = this.requireConfig(params);
+    const query = params.teamId ? `?teamId=${encodeURIComponent(params.teamId)}` : '';
+    const gitSource: Record<string, string> = {
+      type: 'github',
+      ref: params.branchName,
+      repo: `${params.repoOwner}/${params.repoName}`,
+    };
+    if (params.commitSha) gitSource.sha = params.commitSha;
+
+    const response = await fetch(`https://api.vercel.com/v13/deployments${query}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: params.repoName,
+        ...(params.projectId ? { project: params.projectId } : {}),
+        target: 'preview',
+        gitSource,
+      }),
+    });
+
+    const data: any = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new AppError('PROVIDER_ERROR', redactString(data?.error?.message || data?.message || `Vercel API error ${response.status}`), 502);
+    }
+
+    const deploymentId = String(data?.id || data?.uid || '');
+    if (!deploymentId) throw new AppError('PROVIDER_ERROR', 'Vercel deployment response did not include an id', 502);
+
+    const previewUrl = data?.url ? `https://${data.url}` : null;
+    const status = mapVercelStatus(data?.readyState || data?.state || data?.status);
 
     return {
       deploymentId,
       provider: 'vercel',
-      status: 'ready',
+      status,
       previewUrl,
-      logsUrl: `https://vercel.com/logs/${deploymentId}`,
-      buildLogs,
+      logsUrl: `https://vercel.com/${params.teamId || ''}/${params.repoName}/deployments/${deploymentId}`,
+      buildLogs: '[VERCEL BUILD LOGS] Preview deployment accepted by provider',
       errorDetails: null,
       branchName: params.branchName,
       prNumber: params.prNumber || null,
-      createdAt: now,
+      createdAt: data?.createdAt ? new Date(data.createdAt).toISOString() : now,
       updatedAt: now,
     };
   }
 
-  public async getDeploymentStatus(
-    deploymentId: string,
-    params: PreviewDeploymentParams
-  ): Promise<PreviewDeploymentResult> {
+  public async getDeploymentStatus(deploymentId: string, params: PreviewDeploymentParams): Promise<PreviewDeploymentResult> {
     this.validateBranchPolicy(params.branchName);
+    const token = this.requireConfig(params);
     const now = new Date().toISOString();
-    const branchSlug = params.branchName.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-');
+    const query = params.teamId ? `?teamId=${encodeURIComponent(params.teamId)}` : '';
 
-    if (params.simulateFailure) {
-      return {
-        deploymentId,
-        provider: 'vercel',
-        status: 'failed',
-        previewUrl: null,
-        logsUrl: `https://vercel.com/logs/${deploymentId}`,
-        buildLogs: redactString(`[VERCEL BUILD LOGS] Deployment ${deploymentId} failed`),
-        errorDetails: redactString(`Vercel build failed for deployment ${deploymentId}`),
-        branchName: params.branchName,
-        prNumber: params.prNumber || null,
-        createdAt: now,
-        updatedAt: now,
-      };
+    const response = await fetch(`https://api.vercel.com/v13/deployments/${encodeURIComponent(deploymentId)}${query}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data: any = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new AppError('PROVIDER_ERROR', redactString(data?.error?.message || data?.message || `Vercel API error ${response.status}`), 502);
     }
 
     return {
       deploymentId,
       provider: 'vercel',
-      status: 'ready',
-      previewUrl: `https://agentops-${branchSlug}.vercel.app`,
-      logsUrl: `https://vercel.com/logs/${deploymentId}`,
-      buildLogs: redactString(`[VERCEL BUILD LOGS] Vercel preview status: READY`),
+      status: mapVercelStatus(data?.readyState || data?.state || data?.status),
+      previewUrl: data?.url ? `https://${data.url}` : null,
+      logsUrl: `https://vercel.com/${params.teamId || ''}/${params.repoName}/deployments/${deploymentId}`,
+      buildLogs: '[VERCEL BUILD LOGS] Preview status fetched from provider',
       errorDetails: null,
       branchName: params.branchName,
       prNumber: params.prNumber || null,
-      createdAt: now,
-      updatedAt: now,
+      createdAt: data?.createdAt ? new Date(data.createdAt).toISOString() : now,
+      updatedAt: data?.readyAt ? new Date(data.readyAt).toISOString() : now,
     };
   }
 }
