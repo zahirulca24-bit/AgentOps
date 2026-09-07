@@ -33,7 +33,10 @@ export type AuditEventType =
   | 'SECRET_STORED'
   | 'SECRET_ACCESSED'
   | 'SECRET_ROTATED'
-  | 'SECRET_REVOKED';
+  | 'SECRET_REVOKED'
+  | 'SECURITY_SCAN_STARTED'
+  | 'SECURITY_SCAN_COMPLETED'
+  | 'SECURITY_FINDINGS_REPORTED';
 
 export interface AuditLogEntry {
   id: string;

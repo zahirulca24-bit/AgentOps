@@ -312,6 +312,26 @@ export const vaultCredentials = pgTable('vault_credentials', {
   };
 });
 
+export const securityScans = pgTable('security_scans', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  target: varchar('target', { length: 2048 }).notNull(),
+  scanType: varchar('scan_type', { length: 50 }).notNull().default('full'), // 'full' | 'secret' | 'dependency' | 'code' | 'headers' | 'prompt'
+  status: varchar('status', { length: 50 }).notNull().default('completed'), // 'passed' | 'failed' | 'completed'
+  criticalCount: integer('critical_count').notNull().default(0),
+  highCount: integer('high_count').notNull().default(0),
+  mediumCount: integer('medium_count').notNull().default(0),
+  lowCount: integer('low_count').notNull().default(0),
+  totalFindings: integer('total_findings').notNull().default(0),
+  findings: jsonb('findings').notNull(),
+  scannedAt: timestamp('scanned_at').notNull().defaultNow(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => {
+  return {
+    targetIdx: index('security_scans_target_idx').on(table.target),
+    statusIdx: index('security_scans_status_idx').on(table.status),
+  };
+});
+
 
 
 

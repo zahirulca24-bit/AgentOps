@@ -22,6 +22,7 @@ import { deploymentRoutes } from '../modules/deployment/deployment.routes.js';
 import { approvalRoutes } from '../modules/approval/approval.routes.js';
 import { permissionRoutes } from '../modules/permission/permission.routes.js';
 import { credentialVaultRoutes } from '../modules/vault/credential-vault.routes.js';
+import { securityScannerRoutes } from '../modules/security/security-scanner.routes.js';
 
 export async function createApp(config: EnvConfig) {
   const dbClient = createDbClient(config);
@@ -154,6 +155,7 @@ export async function createApp(config: EnvConfig) {
   await app.register(approvalRoutes, { db: dbClient.db });
   await app.register(permissionRoutes, { db: dbClient.db });
   await app.register(credentialVaultRoutes);
+  await app.register(securityScannerRoutes);
 
 
   // Close database connection gracefully
