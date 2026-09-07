@@ -192,6 +192,26 @@ export const githubConfigs = pgTable('github_configs', {
   };
 });
 
+export const previewDeployments = pgTable('preview_deployments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+  provider: varchar('provider', { length: 50 }).notNull(),
+  branchName: varchar('branch_name', { length: 255 }).notNull(),
+  prNumber: integer('pr_number'),
+  status: varchar('status', { length: 50 }).notNull().default('building'),
+  previewUrl: varchar('preview_url', { length: 2048 }),
+  logsUrl: varchar('logs_url', { length: 2048 }),
+  buildLogs: text('build_logs'),
+  errorDetails: text('error_details'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => {
+  return {
+    projectIdIdx: index('preview_deployments_project_id_idx').on(table.projectId),
+    branchNameIdx: index('preview_deployments_branch_name_idx').on(table.branchName),
+  };
+});
+
 // Relationships
 export const projectsRelations = relations(projects, ({ many }) => ({
   tasks: many(tasks),
