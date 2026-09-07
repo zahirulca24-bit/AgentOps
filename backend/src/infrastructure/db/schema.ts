@@ -267,7 +267,6 @@ export const approvalRequests = pgTable('approval_requests', {
   approvedBy: varchar('approved_by', { length: 255 }),
   reason: text('reason'),
   requestedAt: timestamp('requested_at').notNull().defaultNow(),
-  decidedAt: timestamp('decided_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (table) => {
@@ -276,6 +275,24 @@ export const approvalRequests = pgTable('approval_requests', {
     statusIdx: index('approval_requests_status_idx').on(table.status),
   };
 });
+
+export const permissionDecisions = pgTable('permission_decisions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  action: varchar('action', { length: 255 }).notNull(),
+  tier: varchar('tier', { length: 20 }).notNull(), // 'Green' | 'Yellow' | 'Red'
+  decision: varchar('decision', { length: 50 }).notNull(), // 'allow' | 'policy_approval_required' | 'human_approval_required' | 'deny'
+  actor: varchar('actor', { length: 255 }).notNull(),
+  resourceId: varchar('resource_id', { length: 255 }),
+  reason: text('reason'),
+  evaluatedAt: timestamp('evaluated_at').notNull().defaultNow(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => {
+  return {
+    actionIdx: index('permission_decisions_action_idx').on(table.action),
+    tierIdx: index('permission_decisions_tier_idx').on(table.tier),
+  };
+});
+
 
 
 
