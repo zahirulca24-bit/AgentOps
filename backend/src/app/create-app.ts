@@ -18,6 +18,7 @@ import { apiRoutes } from '../modules/api/api.routes.js';
 import { githubRoutes } from '../modules/github/github.routes.js';
 import { runnerRoutes } from '../modules/runner/runner.routes.js';
 import { selfFixRoutes } from '../modules/self-fix/self-fix.routes.js';
+import { deploymentRoutes } from '../modules/deployment/deployment.routes.js';
 
 export async function createApp(config: EnvConfig) {
   const dbClient = createDbClient(config);
@@ -145,8 +146,8 @@ export async function createApp(config: EnvConfig) {
   await app.register(executionRoutes, { config });
   await app.register(apiRoutes, { db: dbClient.db, aiProvider, browserManager, config });
   await app.register(githubRoutes, { prefix: '/api/v1/github' });
-  await app.register(runnerRoutes, { prefix: '/api/v1/fix-runner' });
   await app.register(selfFixRoutes, { prefix: '/api/v1/issues', db: dbClient.db, aiProvider });
+  await app.register(deploymentRoutes, { db: dbClient.db });
 
 
   // Close database connection gracefully

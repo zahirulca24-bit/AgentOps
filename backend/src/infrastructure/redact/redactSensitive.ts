@@ -61,8 +61,11 @@ export function redactString(input: string): string {
 
   // Redact key=value or key: value
   redacted = redacted.replace(
-    /(?:api[_-]?key|secret|password|passwd|auth[_-]?token|access[_-]?token|refresh[_-]?token|private[_-]?key|github[_-]?token)\s*([:=])\s*["']?([^"'\s,;&]+)["']?/gi,
-    (match, separator) => `${match.split(separator)[0]}${separator}"[REDACTED]"`
+    /(?:api[_-]?key|secret|password|passwd|auth[_-]?token|access[_-]?token|refresh[_-]?token|private[_-]?key|github[_-]?token|token)\s*([:=])\s*["']?([^"'\s,;&]+)["']?/gi,
+    (match, separator, value) => {
+      if (value && value.startsWith('[REDACTED')) return match;
+      return `${match.split(separator)[0]}${separator}"[REDACTED]"`;
+    }
   );
 
   // Redact JWT tokens
