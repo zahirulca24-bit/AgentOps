@@ -23,7 +23,10 @@ export type AuditEventType =
   | 'PRODUCTION_DEPLOYMENT_FAILED'
   | 'ROLLBACK_INITIATED'
   | 'ROLLBACK_COMPLETED'
-  | 'ROLLBACK_FAILED';
+  | 'ROLLBACK_FAILED'
+  | 'HUMAN_APPROVAL_REQUESTED'
+  | 'HUMAN_APPROVAL_GRANTED'
+  | 'HUMAN_APPROVAL_REJECTED';
 
 export interface AuditLogEntry {
   id: string;

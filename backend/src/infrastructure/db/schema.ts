@@ -249,7 +249,6 @@ export const deploymentRollbacks = pgTable('deployment_rollbacks', {
   approvedBy: varchar('approved_by', { length: 255 }),
   restoredUrl: varchar('restored_url', { length: 2048 }),
   rollbackLogs: text('rollback_logs'),
-  errorDetails: text('error_details'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (table) => {
@@ -257,6 +256,27 @@ export const deploymentRollbacks = pgTable('deployment_rollbacks', {
     targetProductionIdIdx: index('deployment_rollbacks_target_id_idx').on(table.targetProductionId),
   };
 });
+
+export const approvalRequests = pgTable('approval_requests', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  actionCategory: varchar('action_category', { length: 100 }).notNull(), // 'PRODUCTION_DEPLOYMENT' | 'MANUAL_ROLLBACK' | 'DATABASE_MIGRATION' | 'SECURITY_CREDENTIAL_ROTATION' | 'DESTRUCTIVE_INFRA_ACTION'
+  status: varchar('status', { length: 50 }).notNull().default('pending'), // 'pending' | 'approved' | 'rejected' | 'expired'
+  resourceId: varchar('resource_id', { length: 255 }),
+  actionSummary: text('action_summary').notNull(),
+  requestedBy: varchar('requested_by', { length: 255 }).notNull(),
+  approvedBy: varchar('approved_by', { length: 255 }),
+  reason: text('reason'),
+  requestedAt: timestamp('requested_at').notNull().defaultNow(),
+  decidedAt: timestamp('decided_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => {
+  return {
+    actionCategoryIdx: index('approval_requests_category_idx').on(table.actionCategory),
+    statusIdx: index('approval_requests_status_idx').on(table.status),
+  };
+});
+
 
 
 // Relationships
