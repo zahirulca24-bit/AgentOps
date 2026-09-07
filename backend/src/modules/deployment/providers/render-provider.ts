@@ -79,11 +79,11 @@ export class RenderDeploymentProvider implements DeploymentProvider {
 
     const data: any = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new AppError('PROVIDER_ERROR', redactString(data?.message || data?.error || `Render API error ${response.status}`), 502);
+      throw new AppError('ACTION_FAILED', redactString(data?.message || data?.error || `Render API error ${response.status}`), 502);
     }
 
     const deploymentId = String(data?.id || data?.service?.id || data?.preview?.id || '');
-    if (!deploymentId) throw new AppError('PROVIDER_ERROR', 'Render preview response did not include an id', 502);
+    if (!deploymentId) throw new AppError('ACTION_FAILED', 'Render preview response did not include an id', 502);
 
     const previewUrl = data?.serviceDetails?.url || data?.url || data?.service?.serviceDetails?.url || null;
     const status = mapRenderStatus(data?.status || data?.service?.status);
@@ -113,7 +113,7 @@ export class RenderDeploymentProvider implements DeploymentProvider {
     });
     const data: any = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new AppError('PROVIDER_ERROR', redactString(data?.message || data?.error || `Render API error ${response.status}`), 502);
+      throw new AppError('ACTION_FAILED', redactString(data?.message || data?.error || `Render API error ${response.status}`), 502);
     }
 
     return {
