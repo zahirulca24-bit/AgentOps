@@ -195,6 +195,7 @@ export const githubConfigs = pgTable('github_configs', {
 export const previewDeployments = pgTable('preview_deployments', {
   id: uuid('id').primaryKey().defaultRandom(),
   projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+  runId: uuid('run_id').references(() => runs.id, { onDelete: 'set null' }),
   provider: varchar('provider', { length: 50 }).notNull(),
   branchName: varchar('branch_name', { length: 255 }).notNull(),
   prNumber: integer('pr_number'),
@@ -203,11 +204,13 @@ export const previewDeployments = pgTable('preview_deployments', {
   logsUrl: varchar('logs_url', { length: 2048 }),
   buildLogs: text('build_logs'),
   errorDetails: text('error_details'),
+  logAnalysis: jsonb('log_analysis'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (table) => {
   return {
     projectIdIdx: index('preview_deployments_project_id_idx').on(table.projectId),
+    runIdIdx: index('preview_deployments_run_id_idx').on(table.runId),
     branchNameIdx: index('preview_deployments_branch_name_idx').on(table.branchName),
   };
 });

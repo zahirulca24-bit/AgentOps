@@ -1,5 +1,6 @@
 import { eq, desc } from 'drizzle-orm';
 import type { Database } from '../../infrastructure/db/client.js';
+import type { AIProvider } from '../../core/ai/provider.js';
 import { previewDeployments } from '../../infrastructure/db/schema.js';
 import { AppError } from '../../core/errors.js';
 import { redactString, redactObject } from '../../infrastructure/redact/redactSensitive.js';
@@ -11,16 +12,24 @@ import {
 } from './deployment.provider.js';
 import { RenderDeploymentProvider } from './providers/render-provider.js';
 import { VercelDeploymentProvider } from './providers/vercel-provider.js';
+import { DeploymentLogAnalyzer } from './deployment-log-analyzer.js';
+import { DeploymentLogAnalysis } from './deployment-log-analysis.schema.js';
 
 export class PreviewDeploymentService {
   private providers = new Map<DeploymentProviderType, DeploymentProvider>();
+  private logAnalyzer: DeploymentLogAnalyzer;
 
-  constructor(private db?: Database) {
+  constructor(
+    private db?: Database,
+    private aiProvider?: AIProvider
+  ) {
     const renderProvider = new RenderDeploymentProvider();
     const vercelProvider = new VercelDeploymentProvider();
 
     this.providers.set('render', renderProvider);
     this.providers.set('vercel', vercelProvider);
+
+    this.logAnalyzer = new DeploymentLogAnalyzer(aiProvider);
   }
 
   public validateTaskBranchPolicy(branchName: string, defaultBranch: string = 'main'): void {
@@ -73,6 +82,7 @@ export class PreviewDeploymentService {
         deploymentId: `failed_dpl_${Date.now()}`,
         provider: input.provider,
         status: 'failed',
+        runId: input.runId || null,
         previewUrl: null,
         logsUrl: null,
         buildLogs: redactString(`[BUILD LOGS] Deployment failed to initialize: ${safeErrorMsg}`),
@@ -84,18 +94,39 @@ export class PreviewDeploymentService {
       };
     }
 
-    // 5. Redact Secrets from Output & Logs
+    // 5. Conduct Log Analysis if build logs are present
+    let logAnalysis: DeploymentLogAnalysis | null = null;
+    if (result.buildLogs || result.errorDetails) {
+      const logsToAnalyze = `${result.buildLogs || ''}\n${result.errorDetails || ''}`;
+      logAnalysis = await this.logAnalyzer.analyzeLogs(logsToAnalyze, {
+        deploymentId: result.deploymentId,
+        runId: input.runId,
+        provider: result.provider,
+        branchName: result.branchName,
+      });
+
+      // Update failure state if log analysis detects CRITICAL/HIGH build/runtime failures
+      if (logAnalysis.outcome === 'FAIL' && result.status !== 'failed') {
+        result.status = 'failed';
+        result.errorDetails = logAnalysis.rootCause;
+      }
+    }
+
+    // 6. Redact Secrets from Output & Logs
     const safeResult: PreviewDeploymentResult = {
       ...result,
+      runId: input.runId || result.runId || null,
       buildLogs: result.buildLogs ? redactString(result.buildLogs) : undefined,
       errorDetails: result.errorDetails ? redactString(result.errorDetails) : null,
+      logAnalysis,
     };
 
-    // 6. Persist Deployment Record to Database if DB client exists
+    // 7. Persist Deployment Record to Database if DB client exists
     if (this.db) {
       try {
         await this.db.insert(previewDeployments).values({
           provider: safeResult.provider,
+          runId: safeResult.runId || null,
           branchName: safeResult.branchName,
           prNumber: safeResult.prNumber || null,
           status: safeResult.status,
@@ -103,6 +134,7 @@ export class PreviewDeploymentService {
           logsUrl: safeResult.logsUrl || null,
           buildLogs: safeResult.buildLogs || null,
           errorDetails: safeResult.errorDetails || null,
+          logAnalysis: safeResult.logAnalysis || null,
         });
       } catch {
         // Ignore DB insert failure in test/mock environments
@@ -110,6 +142,13 @@ export class PreviewDeploymentService {
     }
 
     return safeResult;
+  }
+
+  public async analyzeDeploymentLogs(
+    rawLogs: string,
+    options?: { deploymentId?: string; runId?: string; provider?: string; branchName?: string }
+  ): Promise<DeploymentLogAnalysis> {
+    return this.logAnalyzer.analyzeLogs(rawLogs, options);
   }
 
   public async getDeploymentStatus(
@@ -121,10 +160,20 @@ export class PreviewDeploymentService {
 
     try {
       const result = await provider.getDeploymentStatus(deploymentId, input);
+      let logAnalysis: DeploymentLogAnalysis | null = null;
+      if (result.buildLogs || result.errorDetails) {
+        logAnalysis = await this.logAnalyzer.analyzeLogs(
+          `${result.buildLogs || ''}\n${result.errorDetails || ''}`,
+          { deploymentId, runId: input.runId, provider: input.provider, branchName: input.branchName }
+        );
+      }
+
       return {
         ...result,
+        runId: input.runId || result.runId || null,
         buildLogs: result.buildLogs ? redactString(result.buildLogs) : undefined,
         errorDetails: result.errorDetails ? redactString(result.errorDetails) : null,
+        logAnalysis,
       };
     } catch (err: any) {
       const safeErrorMsg = redactString(err?.message || 'Failed to fetch deployment status');
@@ -134,6 +183,7 @@ export class PreviewDeploymentService {
         deploymentId,
         provider: input.provider,
         status: 'failed',
+        runId: input.runId || null,
         previewUrl: null,
         logsUrl: null,
         buildLogs: redactString(`[BUILD LOGS] Status check failed: ${safeErrorMsg}`),
@@ -146,6 +196,34 @@ export class PreviewDeploymentService {
     }
   }
 
+  public async getDeploymentAnalysisByRunId(runId: string): Promise<DeploymentLogAnalysis | null> {
+    if (!this.db || !runId) return null;
+
+    try {
+      const record = await this.db.query.previewDeployments.findFirst({
+        where: eq(previewDeployments.runId, runId),
+        orderBy: desc(previewDeployments.createdAt),
+      });
+
+      if (record && record.logAnalysis) {
+        return redactObject(record.logAnalysis);
+      }
+
+      if (record && record.buildLogs) {
+        return this.logAnalyzer.analyzeLogs(record.buildLogs, {
+          deploymentId: record.id,
+          runId: record.runId || undefined,
+          provider: record.provider,
+          branchName: record.branchName,
+        });
+      }
+    } catch {
+      return null;
+    }
+
+    return null;
+  }
+
   public async listDeployments(): Promise<PreviewDeploymentResult[]> {
     if (!this.db) return [];
 
@@ -155,10 +233,12 @@ export class PreviewDeploymentService {
         deploymentId: r.id,
         provider: r.provider as DeploymentProviderType,
         status: r.status as any,
+        runId: r.runId || null,
         previewUrl: r.previewUrl,
         logsUrl: r.logsUrl,
         buildLogs: r.buildLogs ? redactString(r.buildLogs) : undefined,
         errorDetails: r.errorDetails ? redactString(r.errorDetails) : null,
+        logAnalysis: r.logAnalysis ? redactObject(r.logAnalysis) : null,
         branchName: r.branchName,
         prNumber: r.prNumber,
         createdAt: r.createdAt ? new Date(r.createdAt).toISOString() : new Date().toISOString(),
