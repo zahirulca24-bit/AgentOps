@@ -9,6 +9,7 @@ import {
   getDeploymentStatusSchema,
   analyzeDeploymentLogsBodySchema,
 } from './deployment.schema.js';
+import { triggerPostDeploymentQABodySchema } from './post-deployment-qa.schema.js';
 
 export async function deploymentRoutes(
   fastify: FastifyInstance,
@@ -85,5 +86,34 @@ export async function deploymentRoutes(
     }
 
     return reply.send({ data: analysis });
+  });
+
+  // POST /api/v1/deployments/preview/:id/qa-run - Trigger Post-Deployment QA Run
+  fastify.post('/api/v1/deployments/preview/:id/qa-run', async (request: FastifyRequest, reply: FastifyReply) => {
+    const paramsSchema = z.object({ id: z.string().min(1) });
+    const paramParse = paramsSchema.safeParse(request.params);
+    if (!paramParse.success) {
+      throw new AppError('VALIDATION_ERROR', 'Invalid deployment ID format', 400);
+    }
+
+    const bodyParse = triggerPostDeploymentQABodySchema.safeParse(request.body || {});
+    if (!bodyParse.success) {
+      throw new AppError('VALIDATION_ERROR', 'Invalid QA run payload', 400);
+    }
+
+    const summary = await deploymentService.triggerPostDeploymentQA(paramParse.data.id, bodyParse.data);
+    return reply.status(201).send({ data: summary });
+  });
+
+  // GET /api/v1/deployments/preview/:id/qa-status - Get Post-Deployment QA Run Status & Verdict
+  fastify.get('/api/v1/deployments/preview/:id/qa-status', async (request: FastifyRequest, reply: FastifyReply) => {
+    const paramsSchema = z.object({ id: z.string().min(1) });
+    const paramParse = paramsSchema.safeParse(request.params);
+    if (!paramParse.success) {
+      throw new AppError('VALIDATION_ERROR', 'Invalid deployment ID format', 400);
+    }
+
+    const summary = await deploymentService.getPostDeploymentQAStatus(paramParse.data.id);
+    return reply.send({ data: summary });
   });
 }

@@ -14,10 +14,13 @@ import { RenderDeploymentProvider } from './providers/render-provider.js';
 import { VercelDeploymentProvider } from './providers/vercel-provider.js';
 import { DeploymentLogAnalyzer } from './deployment-log-analyzer.js';
 import { DeploymentLogAnalysis } from './deployment-log-analysis.schema.js';
+import { PostDeploymentQAService } from './post-deployment-qa.service.js';
+import { PostDeploymentQASummary } from './post-deployment-qa.schema.js';
 
 export class PreviewDeploymentService {
   private providers = new Map<DeploymentProviderType, DeploymentProvider>();
   private logAnalyzer: DeploymentLogAnalyzer;
+  private postDeploymentQA: PostDeploymentQAService;
 
   constructor(
     private db?: Database,
@@ -30,6 +33,7 @@ export class PreviewDeploymentService {
     this.providers.set('vercel', vercelProvider);
 
     this.logAnalyzer = new DeploymentLogAnalyzer(aiProvider);
+    this.postDeploymentQA = new PostDeploymentQAService(db);
   }
 
   public validateTaskBranchPolicy(branchName: string, defaultBranch: string = 'main'): void {
@@ -112,7 +116,20 @@ export class PreviewDeploymentService {
       }
     }
 
-    // 6. Redact Secrets from Output & Logs
+    // 6. Automatically trigger Post-Deployment QA if preview deployment status is READY
+    if (result.status === 'ready' && result.previewUrl) {
+      try {
+        const qaSummary = await this.postDeploymentQA.triggerPostDeploymentQA(result.deploymentId, {
+          previewUrl: result.previewUrl,
+          branchName: result.branchName,
+        });
+        result.runId = qaSummary.runId;
+      } catch {
+        // Soft fallback for post-deployment QA trigger errors
+      }
+    }
+
+    // 7. Redact Secrets from Output & Logs
     const safeResult: PreviewDeploymentResult = {
       ...result,
       runId: input.runId || result.runId || null,
@@ -121,7 +138,7 @@ export class PreviewDeploymentService {
       logAnalysis,
     };
 
-    // 7. Persist Deployment Record to Database if DB client exists
+    // 8. Persist Deployment Record to Database if DB client exists
     if (this.db) {
       try {
         await this.db.insert(previewDeployments).values({
@@ -142,6 +159,17 @@ export class PreviewDeploymentService {
     }
 
     return safeResult;
+  }
+
+  public async triggerPostDeploymentQA(
+    deploymentId: string,
+    options?: { forceReRun?: boolean; customTargetUrl?: string }
+  ): Promise<PostDeploymentQASummary> {
+    return this.postDeploymentQA.triggerPostDeploymentQA(deploymentId, options);
+  }
+
+  public async getPostDeploymentQAStatus(deploymentId: string): Promise<PostDeploymentQASummary> {
+    return this.postDeploymentQA.getPostDeploymentQAStatus(deploymentId);
   }
 
   public async analyzeDeploymentLogs(
