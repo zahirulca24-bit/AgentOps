@@ -80,11 +80,11 @@ export class VercelDeploymentProvider implements DeploymentProvider {
 
     const data: any = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new AppError('PROVIDER_ERROR', redactString(data?.error?.message || data?.message || `Vercel API error ${response.status}`), 502);
+      throw new AppError('ACTION_FAILED', redactString(data?.error?.message || data?.message || `Vercel API error ${response.status}`), 502);
     }
 
     const deploymentId = String(data?.id || data?.uid || '');
-    if (!deploymentId) throw new AppError('PROVIDER_ERROR', 'Vercel deployment response did not include an id', 502);
+    if (!deploymentId) throw new AppError('ACTION_FAILED', 'Vercel deployment response did not include an id', 502);
 
     const previewUrl = data?.url ? `https://${data.url}` : null;
     const status = mapVercelStatus(data?.readyState || data?.state || data?.status);
@@ -115,7 +115,7 @@ export class VercelDeploymentProvider implements DeploymentProvider {
     });
     const data: any = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new AppError('PROVIDER_ERROR', redactString(data?.error?.message || data?.message || `Vercel API error ${response.status}`), 502);
+      throw new AppError('ACTION_FAILED', redactString(data?.error?.message || data?.message || `Vercel API error ${response.status}`), 502);
     }
 
     return {
