@@ -10,12 +10,18 @@ import {
   analyzeDeploymentLogsBodySchema,
 } from './deployment.schema.js';
 import { triggerPostDeploymentQABodySchema } from './post-deployment-qa.schema.js';
+import {
+  requestProductionDeploymentSchema,
+  approveProductionDeploymentSchema,
+  executeProductionDeploymentSchema,
+} from './production-deployment.schema.js';
 
 export async function deploymentRoutes(
   fastify: FastifyInstance,
   options: { db?: Database; aiProvider?: AIProvider }
 ) {
   const deploymentService = new PreviewDeploymentService(options.db, options.aiProvider);
+  const prodService = deploymentService.productionDeploymentService;
 
   // POST /api/v1/deployments/preview - Trigger Preview Deployment
   fastify.post('/api/v1/deployments/preview', async (request: FastifyRequest, reply: FastifyReply) => {
@@ -115,5 +121,60 @@ export async function deploymentRoutes(
 
     const summary = await deploymentService.getPostDeploymentQAStatus(paramParse.data.id);
     return reply.send({ data: summary });
+  });
+
+  // POST /api/v1/deployments/production/request - Request Production Deployment (Requires Preview Ready & QA Pass)
+  fastify.post('/api/v1/deployments/production/request', async (request: FastifyRequest, reply: FastifyReply) => {
+    const parseResult = requestProductionDeploymentSchema.safeParse(request.body);
+    if (!parseResult.success) {
+      const errMsg = parseResult.error.issues[0]?.message || 'Invalid production deployment request payload';
+      throw new AppError('VALIDATION_ERROR', errMsg, 400);
+    }
+
+    const result = await prodService.requestProductionDeployment(parseResult.data);
+    return reply.status(201).send({ data: result });
+  });
+
+  // POST /api/v1/deployments/production/approve - Human Approval Gate for Production Deployment
+  fastify.post('/api/v1/deployments/production/approve', async (request: FastifyRequest, reply: FastifyReply) => {
+    const parseResult = approveProductionDeploymentSchema.safeParse(request.body);
+    if (!parseResult.success) {
+      const errMsg = parseResult.error.issues[0]?.message || 'Invalid production approval payload';
+      throw new AppError('VALIDATION_ERROR', errMsg, 400);
+    }
+
+    const result = await prodService.approveProductionDeployment(parseResult.data);
+    return reply.status(200).send({ data: result });
+  });
+
+  // POST /api/v1/deployments/production/deploy - Execute Approved Production Deployment
+  fastify.post('/api/v1/deployments/production/deploy', async (request: FastifyRequest, reply: FastifyReply) => {
+    const parseResult = executeProductionDeploymentSchema.safeParse(request.body);
+    if (!parseResult.success) {
+      const errMsg = parseResult.error.issues[0]?.message || 'Invalid production deployment execution payload';
+      throw new AppError('VALIDATION_ERROR', errMsg, 400);
+    }
+
+    const result = await prodService.executeProductionDeployment(parseResult.data);
+    const statusCode = result.status === 'failed' ? 422 : 200;
+    return reply.status(statusCode).send({ data: result });
+  });
+
+  // GET /api/v1/deployments/production/:id - Get Production Deployment Status
+  fastify.get('/api/v1/deployments/production/:id', async (request: FastifyRequest, reply: FastifyReply) => {
+    const paramsSchema = z.object({ id: z.string().min(1) });
+    const paramParse = paramsSchema.safeParse(request.params);
+    if (!paramParse.success) {
+      throw new AppError('VALIDATION_ERROR', 'Invalid production deployment ID format', 400);
+    }
+
+    const result = await prodService.getProductionDeploymentStatus(paramParse.data.id);
+    return reply.send({ data: result });
+  });
+
+  // GET /api/v1/deployments/production - List Production Deployments
+  fastify.get('/api/v1/deployments/production', async (request: FastifyRequest, reply: FastifyReply) => {
+    const list = await prodService.listProductionDeployments();
+    return reply.send({ data: list });
   });
 }

@@ -215,6 +215,30 @@ export const previewDeployments = pgTable('preview_deployments', {
   };
 });
 
+export const productionDeployments = pgTable('production_deployments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  previewDeploymentId: uuid('preview_deployment_id').references(() => previewDeployments.id, { onDelete: 'cascade' }),
+  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+  provider: varchar('provider', { length: 50 }).notNull(),
+  branchName: varchar('branch_name', { length: 255 }).notNull(),
+  status: varchar('status', { length: 50 }).notNull().default('pending_approval'),
+  approvalStatus: varchar('approval_status', { length: 50 }).notNull().default('pending'),
+  approvedBy: varchar('approved_by', { length: 255 }),
+  approvedAt: timestamp('approved_at'),
+  rejectionReason: text('rejection_reason'),
+  productionUrl: varchar('production_url', { length: 2048 }),
+  logsUrl: varchar('logs_url', { length: 2048 }),
+  buildLogs: text('build_logs'),
+  errorDetails: text('error_details'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => {
+  return {
+    previewDeploymentIdIdx: index('production_deployments_preview_id_idx').on(table.previewDeploymentId),
+    approvalStatusIdx: index('production_deployments_approval_status_idx').on(table.approvalStatus),
+  };
+});
+
 // Relationships
 export const projectsRelations = relations(projects, ({ many }) => ({
   tasks: many(tasks),

@@ -16,11 +16,13 @@ import { DeploymentLogAnalyzer } from './deployment-log-analyzer.js';
 import { DeploymentLogAnalysis } from './deployment-log-analysis.schema.js';
 import { PostDeploymentQAService } from './post-deployment-qa.service.js';
 import { PostDeploymentQASummary } from './post-deployment-qa.schema.js';
+import { ProductionDeploymentService } from './production-deployment.service.js';
 
 export class PreviewDeploymentService {
   private providers = new Map<DeploymentProviderType, DeploymentProvider>();
   private logAnalyzer: DeploymentLogAnalyzer;
   private postDeploymentQA: PostDeploymentQAService;
+  public productionDeploymentService: ProductionDeploymentService;
 
   constructor(
     private db?: Database,
@@ -34,6 +36,7 @@ export class PreviewDeploymentService {
 
     this.logAnalyzer = new DeploymentLogAnalyzer(aiProvider);
     this.postDeploymentQA = new PostDeploymentQAService(db);
+    this.productionDeploymentService = new ProductionDeploymentService(db);
   }
 
   public validateTaskBranchPolicy(branchName: string, defaultBranch: string = 'main'): void {
