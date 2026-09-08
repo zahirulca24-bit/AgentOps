@@ -24,6 +24,7 @@ import { permissionRoutes } from '../modules/permission/permission.routes.js';
 import { credentialVaultRoutes } from '../modules/vault/credential-vault.routes.js';
 import { securityScannerRoutes } from '../modules/security/security-scanner.routes.js';
 import { databaseAgentRoutes } from '../modules/database/database-agent.routes.js';
+import { commandChatRoutes } from '../modules/command-chat/command-chat.routes.js';
 
 export async function createApp(config: EnvConfig) {
   const dbClient = createDbClient(config);
@@ -159,6 +160,7 @@ export async function createApp(config: EnvConfig) {
   await app.register(credentialVaultRoutes);
   await app.register(securityScannerRoutes);
   await app.register(databaseAgentRoutes);
+  await app.register(commandChatRoutes, { db: dbClient.db, aiProvider });
 
   // Close database connection gracefully
   app.addHook('onClose', async () => {

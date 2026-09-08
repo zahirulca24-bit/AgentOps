@@ -77,6 +77,16 @@ Do not generate arbitrary executable code. Do not hallucinate URLs.`;
   private getFallbackResponse<T>(context: StructuredQAContext, responseSchema: any): T {
     const schemaProperties = responseSchema?.properties || {};
 
+    if (schemaProperties.intent && schemaProperties.summary) {
+      const command = context.taskCommand.toLowerCase();
+      const intent = command.includes('deploy') || command.includes('vercel') || command.includes('render') ? 'deploy'
+        : command.includes('github') || command.includes('pull request') || command.includes('branch') ? 'github'
+        : command.includes('issue') || command.includes('bug') ? 'issues'
+        : command.includes('report') ? 'reports'
+        : command.includes('run') || command.includes('status') ? 'runs' : 'qa';
+      return { intent, summary: `Command classified as ${intent} in fallback mode.` } as T;
+    }
+
     if (schemaProperties.objective && schemaProperties.steps) {
       // Planner Response Schema
       return {
