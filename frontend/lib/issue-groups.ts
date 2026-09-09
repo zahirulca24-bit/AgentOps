@@ -1,0 +1,3 @@
+import type { ApiIssue } from './api';
+export type RootIssue = { key: string; rootCause: string; issues: ApiIssue[]; failedTests: number };
+export function groupRootIssues(issues: ApiIssue[]): RootIssue[] { const map = new Map<string, RootIssue>(); for (const issue of issues) { const rootCause = issue.rootCauseAnalysis?.likelyCause || issue.title.replace(/^(Test Failed|Execution Error|Visual Defect):\s*/i, ''); const key = rootCause.toLowerCase().trim(); const group = map.get(key) || { key, rootCause, issues: [], failedTests: 0 }; group.issues.push(issue); group.failedTests += issue.testResultId ? 1 : 0; map.set(key, group); } return [...map.values()]; }
