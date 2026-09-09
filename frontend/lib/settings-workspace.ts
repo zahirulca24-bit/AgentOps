@@ -9,7 +9,7 @@ export type Integration = {
   permissions: string[];
 };
 
-export const SETTINGS_TABS = ['General', 'Integrations', 'Permissions', 'Credentials', 'Notifications'] as const;
+export const SETTINGS_TABS = ['General', 'Integrations', 'Security'] as const;
 export type SettingsTab = (typeof SETTINGS_TABS)[number];
 
 export const INITIAL_INTEGRATIONS: Integration[] = [

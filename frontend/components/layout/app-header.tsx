@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { usePathname } from '@/lib/router';
 import { getNavigationItemByPath } from '@/components/navigation/navigation-config';
 import { StatusIndicator, ThemeToggle } from '@/components/ui';
-import { Menu } from 'lucide-react';
+import { Bell, Menu } from 'lucide-react';
+import { api } from '@/lib/api';
 
 export interface AppHeaderProps {
   onOpenMobileMenu: () => void;
@@ -13,6 +14,8 @@ export function AppHeader({ onOpenMobileMenu, isMobileMenuOpen = false }: AppHea
   const pathname = usePathname();
   const currentItem = getNavigationItemByPath(pathname);
   const pageTitle = currentItem?.label || 'AgentOps';
+  const [failures, setFailures] = useState(0);
+  useEffect(() => { api.listRuns().then((r) => setFailures(r.data.filter((run) => ['failed', 'error', 'aborted'].includes(run.status)).length)).catch(() => setFailures(0)); }, []);
 
   return (
     <header
@@ -44,6 +47,7 @@ export function AppHeader({ onOpenMobileMenu, isMobileMenuOpen = false }: AppHea
 
       {/* Right: Static System Status + Theme Control */}
       <div className="flex items-center gap-4 shrink-0">
+        <button type="button" className="relative rounded-md p-2 text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus" aria-label={`${failures} worker or deploy alerts`} title="Notifications: real failed runs and alerts"><Bell className="h-5 w-5" />{failures > 0 && <span className="absolute right-0 top-0 min-w-4 rounded-full bg-danger px-1 text-[10px] font-bold text-danger-foreground">{failures}</span>}</button>
         {/* Restrained static Status Area (Prompt 3 mandate: clearly static UI) */}
         <div
           className="hidden sm:flex items-center px-2.5 py-1 rounded-md bg-surface-muted border border-border text-xs"
