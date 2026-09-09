@@ -25,9 +25,9 @@ export class PlannerService {
       throw new AppError('VALIDATION_ERROR', 'Command is too long for planning', 400);
     }
 
-    const projectRecord = await this.db.query.projects.findFirst({
-      where: eq(projects.id, taskRecord.projectId),
-    });
+    const projectRecord = taskRecord.projectId && this.db.query?.projects?.findFirst
+      ? await this.db.query.projects.findFirst({ where: eq(projects.id, taskRecord.projectId) })
+      : null;
 
     const targetUrl = resolveEffectiveTargetUrl({
       taskTargetUrl: taskRecord.targetUrl,
@@ -78,8 +78,6 @@ export class PlannerService {
       }));
 
       await tx.insert(runSteps).values(stepValues);
-      
-      // Update task status
       await tx.update(tasks).set({ status: 'running' }).where(eq(tasks.id, taskRecord.id));
     });
 
