@@ -73,7 +73,7 @@ export class ExecutionCredentialBrokerService {
     registerDynamicSecret(password);
 
     AuditLoggerService.log(
-      'TEST_CREDENTIAL_BROKERED',
+      'SECRET_ACCESSED',
       `Execution-only test credential '${secretRef}' was brokered for Browser Worker '${actor}'.`,
       'success',
       secretRef,
