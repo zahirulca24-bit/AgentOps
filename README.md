@@ -44,15 +44,15 @@ Build the secure browser and QA foundation first.
 
 ### Phase 1 Checklist
 
-- [ ] Natural-language goal becomes bounded execution steps
-- [ ] One unified browser execution engine
-- [ ] Private/internal network access blocked by default
-- [ ] Browser sessions isolated between tasks
-- [ ] Agent can explore a test site without predefined selectors
-- [ ] Functional tests can be generated automatically
-- [ ] Desktop/mobile visual checks work
-- [ ] Console and network failures are captured
-- [ ] Timeouts, retries, and maximum-step limits enforced
+- [x] Natural-language goal becomes bounded execution steps
+- [x] One unified browser execution engine
+- [x] Private/internal network access blocked by default
+- [x] Browser sessions isolated between tasks
+- [x] Agent can explore a test site without predefined selectors
+- [x] Functional tests can be generated automatically
+- [x] Desktop/mobile visual checks work
+- [x] Console and network failures are captured
+- [x] Timeouts, retries, and maximum-step limits enforced
 - [ ] Phase 1 security review passed
 
 **Exit:** AgentOps can safely explore and test a website and produce reliable evidence without changing source code or production infrastructure.
@@ -90,16 +90,16 @@ Turn QA findings into reviewable engineering work.
 
 ### Phase 2 Checklist
 
-- [ ] Every bug has reproducible evidence
-- [ ] Severity follows documented rules
-- [ ] Root-cause analysis links findings to relevant code/logs
+- [x] Every bug has reproducible evidence
+- [x] Severity follows documented rules
+- [x] Root-cause analysis links findings to relevant code/logs
 - [ ] GitHub uses least-privilege credentials
-- [ ] Agent never pushes directly to protected `main`
-- [ ] Every change uses a task branch
-- [ ] Changes are presented through pull requests
-- [ ] Tests run before a fix is accepted
-- [ ] Autofix attempts have a hard maximum
-- [ ] Failed autofixes escalate to a human
+- [x] Agent never pushes directly to protected `main`
+- [x] Every change uses a task branch
+- [x] Changes are presented through pull requests
+- [x] Tests run before a fix is accepted
+- [x] Autofix attempts have a hard maximum
+- [x] Failed autofixes escalate to a human
 - [ ] Phase 2 security review passed
 
 **Exit:** AgentOps can discover a bug, implement a bounded fix, test it, and present it through a reviewable pull request.
@@ -122,16 +122,16 @@ Initial deployment integrations: **Render, Vercel, Netlify**.
 
 ### Phase 3 Checklist
 
-- [ ] Preview deployments use a common provider interface
-- [ ] Deployment status tracked end-to-end
-- [ ] Build/runtime logs available to diagnostic agent
-- [ ] Preview URLs automatically enter QA pipeline
-- [ ] Failed preview QA blocks production promotion
-- [ ] Production deployment requires configured approval
+- [x] Preview deployments use a common provider interface
+- [x] Deployment status tracked end-to-end
+- [x] Build/runtime logs available to diagnostic agent
+- [x] Preview URLs automatically enter QA pipeline
+- [x] Failed preview QA blocks production promotion
+- [x] Production deployment requires configured approval
 - [ ] Rollback tested before production autonomy is enabled
-- [ ] Destructive actions cannot bypass permission engine
-- [ ] Approval request shows action, target, risk, and expected effect
-- [ ] Every deployment/approval decision is auditable
+- [x] Destructive actions cannot bypass permission engine
+- [x] Approval request shows action, target, risk, and expected effect
+- [x] Every deployment/approval decision is auditable
 - [ ] Phase 3 security review passed
 
 **Exit:** AgentOps can safely take a change from PR → preview → verification → human-approved production deployment, with rollback capability.
@@ -152,16 +152,16 @@ Prepare AgentOps for persistent real-world operation.
 
 ### Phase 4 Checklist
 
-- [ ] Raw provider tokens are not exposed to the model unnecessarily
-- [ ] Secrets encrypted and scoped per integration
-- [ ] Logs/reports redact passwords, tokens, cookies, and sensitive values
+- [x] Raw provider tokens are not exposed to the model unnecessarily
+- [x] Secrets encrypted and scoped per integration
+- [x] Logs/reports redact passwords, tokens, cookies, and sensitive values
 - [ ] Dependency and secret scanning automated
-- [ ] Database changes support plan/dry-run
-- [ ] Destructive DB operations require explicit approval
+- [x] Database changes support plan/dry-run
+- [x] Destructive DB operations require explicit approval
 - [ ] Scheduled jobs cannot overlap uncontrollably
 - [ ] Production monitoring has sensible alert thresholds
 - [ ] Notifications do not leak secrets
-- [ ] Reports contain evidence and actionable remediation
+- [x] Reports contain evidence and actionable remediation
 - [ ] Phase 4 security review passed
 
 **Exit:** AgentOps can operate continuously with protected credentials, controlled DB access, scheduled QA, monitoring, notifications, and useful reports.
@@ -182,14 +182,14 @@ Complete the platform with governance, specialized agents, history, and operatio
 
 ### Phase 5 Checklist
 
-- [ ] Important actions appear in an auditable event history
-- [ ] Specialized agents have separate roles and tool permissions
+- [x] Important actions appear in an auditable event history
+- [x] Specialized agents have separate roles and tool permissions
 - [ ] Orchestrator cannot bypass approval/security policies
-- [ ] Project memory has retention and sensitivity rules
-- [ ] Dashboard shows live task state and pending approvals
+- [x] Project memory has retention and sensitivity rules
+- [x] Dashboard shows live task state and pending approvals
 - [ ] Kill switch stops active execution quickly
 - [ ] Per-task and per-project cost limits enforced
-- [ ] Retry budgets enforced across the workflow
+- [x] Retry budgets enforced across the workflow
 - [ ] Agent safely recovers from partial failures
 - [ ] Production readiness/security review passed
 - [ ] Full end-to-end acceptance test passed
