@@ -103,6 +103,12 @@ export function redactObject<T = any>(obj: T): T {
     return redactString(obj) as unknown as T;
   }
 
+  // Preserve timestamps. Treating Date as a generic object would turn it into {},
+  // which corrupts last-run/next-run data before Fastify serializes it.
+  if (obj instanceof Date) {
+    return obj;
+  }
+
   if (Array.isArray(obj)) {
     return obj.map(item => redactObject(item)) as unknown as T;
   }

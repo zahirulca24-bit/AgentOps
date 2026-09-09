@@ -25,11 +25,15 @@ import { credentialVaultRoutes } from '../modules/vault/credential-vault.routes.
 import { securityScannerRoutes } from '../modules/security/security-scanner.routes.js';
 import { databaseAgentRoutes } from '../modules/database/database-agent.routes.js';
 import { commandChatRoutes } from '../modules/command-chat/command-chat.routes.js';
+import { browserWorkerRoutes } from '../modules/browser-workers/browser-worker.routes.js';
+import { BrowserWorkerScheduler, BrowserWorkerService } from '../modules/browser-workers/browser-worker.service.js';
 
 export async function createApp(config: EnvConfig) {
   const dbClient = createDbClient(config);
   const aiProvider = new GeminiProvider(config);
   const browserManager = new BrowserManager(config, false); // always false in production
+  const browserWorkerService = new BrowserWorkerService(dbClient.db, browserManager, config);
+  const browserWorkerScheduler = new BrowserWorkerScheduler(browserWorkerService);
 
   const app = fastify({
     logger: {
@@ -49,7 +53,6 @@ export async function createApp(config: EnvConfig) {
       ]
     },
     genReqId: function (req) {
-      // Very basic validation: only allow alphanumeric, dash, underscore
       const reqId = req.headers['x-request-id'];
       if (reqId && typeof reqId === 'string' && /^[a-zA-Z0-9_-]+$/.test(reqId)) {
         return reqId;
@@ -59,7 +62,9 @@ export async function createApp(config: EnvConfig) {
     requestIdHeader: 'x-request-id',
   });
 
-  // Security Headers via @fastify/helmet
+  // Make the shared DB available to modules such as Credential Vault without exposing it over HTTP.
+  app.decorate('db', dbClient.db);
+
   await app.register(helmet, {
     contentSecurityPolicy: {
       directives: {
@@ -72,7 +77,6 @@ export async function createApp(config: EnvConfig) {
     }
   });
 
-  // Rate Limiting via @fastify/rate-limit
   await app.register(rateLimit, {
     max: config.RATE_LIMIT_READ_MAX,
     timeWindow: config.RATE_LIMIT_WINDOW_MS,
@@ -85,7 +89,6 @@ export async function createApp(config: EnvConfig) {
     })
   });
 
-  // Ensure request ID is returned in headers
   app.addHook('onSend', async (request, reply, payload) => {
     reply.header('x-request-id', request.id);
     return payload;
@@ -95,10 +98,9 @@ export async function createApp(config: EnvConfig) {
     origin: config.CORS_ORIGINS,
   });
 
-  // Global Error Handler with secret redaction
   app.setErrorHandler((error, request, reply) => {
     const requestId = request.id;
-    
+
     if (error instanceof AppError) {
       request.log.warn({ err: error }, `App error: ${error.code}`);
       return reply.status(error.statusCode).send({
@@ -110,7 +112,6 @@ export async function createApp(config: EnvConfig) {
       });
     }
 
-    // Fastify rate limit error handling
     const errObj = error as any;
     if (errObj && errObj.statusCode === 429) {
       return reply.status(429).send({
@@ -122,7 +123,6 @@ export async function createApp(config: EnvConfig) {
       });
     }
 
-    // Default to 500 for unhandled exceptions
     request.log.error({ err: error }, 'Unhandled exception');
     return reply.status(500).send({
       error: {
@@ -133,7 +133,6 @@ export async function createApp(config: EnvConfig) {
     });
   });
 
-  // Global Not Found Handler
   app.setNotFoundHandler((request, reply) => {
     const requestId = request.id;
     return reply.status(404).send({
@@ -145,12 +144,12 @@ export async function createApp(config: EnvConfig) {
     });
   });
 
-  // Register routes
   await app.register(healthRoutes, dbClient.db);
   await app.register(plannerRoutes, { db: dbClient.db, aiProvider });
   await app.register(evidenceRoutes, { config });
   await app.register(executionRoutes, { config });
   await app.register(apiRoutes, { db: dbClient.db, aiProvider, browserManager, config });
+  await app.register(browserWorkerRoutes, { service: browserWorkerService });
   await app.register(githubRoutes, { prefix: '/api/v1/github' });
   await app.register(runnerRoutes, { prefix: '/api/v1/fix-runner' });
   await app.register(selfFixRoutes, { prefix: '/api/v1/issues', db: dbClient.db, aiProvider });
@@ -162,8 +161,11 @@ export async function createApp(config: EnvConfig) {
   await app.register(databaseAgentRoutes);
   await app.register(commandChatRoutes, { db: dbClient.db, aiProvider });
 
-  // Close database connection gracefully
+  // Production/dev scheduler. Tests call scheduler.tick/service.runDueWorkers deterministically.
+  if (config.NODE_ENV !== 'test') browserWorkerScheduler.start();
+
   app.addHook('onClose', async () => {
+    browserWorkerScheduler.stop();
     await browserManager.cleanup();
     await dbClient.close();
   });
