@@ -21,10 +21,10 @@ function matchesCondition(item: any, cond: any): boolean {
 
     if (!colObj && Array.isArray(cond.queryChunks)) {
       colObj = cond.queryChunks.find((chunk: any) => chunk && (chunk.name || chunk.columnName || chunk.key || chunk.config?.name));
-      const paramChunk = cond.queryChunks.find((chunk: any) => 
+      const paramChunk = cond.queryChunks.find((chunk: any) =>
         chunk && (
-          chunk.constructor?.name === 'Param' || 
-          'encoder' in chunk || 
+          chunk.constructor?.name === 'Param' ||
+          'encoder' in chunk ||
           ('value' in chunk && !Array.isArray(chunk.value) && typeof chunk.value !== 'object' && chunk.value !== ' = ' && chunk.value !== '=')
         )
       );
@@ -91,22 +91,34 @@ export function createInMemoryDb() {
     browser_sessions: [],
     evidence: [],
     github_configs: [],
+    vault_credentials: [],
+    permission_decisions: [],
+    agent_communication_logs: [],
+    browser_workers: [],
+    browser_worker_runs: [],
+    browser_worker_notifications: [],
   };
 
   const mapTableName = (tableObj: any): string => {
     const nameStr = getTableName(tableObj);
     const normalized = nameStr.toLowerCase();
 
+    if (normalized.includes('browser_worker_notification') || normalized.includes('browserworkernotification')) return 'browser_worker_notifications';
+    if (normalized.includes('browser_worker_run') || normalized.includes('browserworkerrun')) return 'browser_worker_runs';
+    if (normalized.includes('browser_worker') || normalized.includes('browserworker')) return 'browser_workers';
+    if (normalized.includes('vault_credential') || normalized.includes('vaultcredential')) return 'vault_credentials';
+    if (normalized.includes('permission_decision') || normalized.includes('permissiondecision')) return 'permission_decisions';
+    if (normalized.includes('agent_communication') || normalized.includes('agentcommunication')) return 'agent_communication_logs';
     if (normalized.includes('project')) return 'projects';
     if (normalized.includes('task')) return 'tasks';
     if (normalized.includes('run_step') || normalized.includes('runstep')) return 'run_steps';
-    if (normalized.includes('run')) return 'runs';
     if (normalized.includes('test_case') || normalized.includes('testcase')) return 'test_cases';
     if (normalized.includes('test_result') || normalized.includes('testresult')) return 'test_results';
-    if (normalized.includes('issue')) return 'issues';
     if (normalized.includes('browser_session') || normalized.includes('browsersession')) return 'browser_sessions';
+    if (normalized.includes('issue')) return 'issues';
     if (normalized.includes('evidence')) return 'evidence';
     if (normalized.includes('github')) return 'github_configs';
+    if (normalized.includes('run')) return 'runs';
 
     return normalized || 'projects';
   };
@@ -178,6 +190,15 @@ export function createInMemoryDb() {
           const list = store[rawName] || (store[rawName] = []);
 
           for (const item of itemsToInsert) {
+            if (rawName === 'browser_worker_runs' && item.status === 'running') {
+              const overlapping = list.some(existing => existing.workerId === item.workerId && existing.status === 'running');
+              if (overlapping) {
+                const error: any = new Error('browser_worker_runs_one_running_idx');
+                error.code = '23505';
+                throw error;
+              }
+            }
+
             const newItem = {
               id: item.id || crypto.randomUUID(),
               createdAt: item.createdAt || new Date(),
@@ -185,7 +206,7 @@ export function createInMemoryDb() {
               ...item,
             };
 
-            if ((rawName === 'runs' || rawName === 'browser_sessions') && !newItem.startedAt) {
+            if ((rawName === 'runs' || rawName === 'browser_sessions' || rawName === 'browser_worker_runs') && !newItem.startedAt) {
               newItem.startedAt = newItem.createdAt || new Date();
             }
 
@@ -228,11 +249,13 @@ export function createInMemoryDb() {
           const queryObj: any = {
             whereCondition: null,
             limitVal: null,
+            orderDesc: false,
             where(cond: any) {
               queryObj.whereCondition = cond;
               return queryObj;
             },
             orderBy() {
+              queryObj.orderDesc = true;
               return queryObj;
             },
             limit(n: number) {
@@ -243,6 +266,7 @@ export function createInMemoryDb() {
               try {
                 const list = store[rawName] || [];
                 let res = list.filter(item => matchesCondition(item, queryObj.whereCondition));
+                if (queryObj.orderDesc) res = [...res].reverse();
                 if (queryObj.limitVal !== null) {
                   res = res.slice(0, queryObj.limitVal);
                 }
@@ -268,6 +292,12 @@ export function createInMemoryDb() {
       browserSessions: buildQueryApi('browser_sessions'),
       evidence: buildQueryApi('evidence'),
       githubConfigs: buildQueryApi('github_configs'),
+      vaultCredentials: buildQueryApi('vault_credentials'),
+      permissionDecisions: buildQueryApi('permission_decisions'),
+      agentCommunicationLogs: buildQueryApi('agent_communication_logs'),
+      browserWorkers: buildQueryApi('browser_workers'),
+      browserWorkerRuns: buildQueryApi('browser_worker_runs'),
+      browserWorkerNotifications: buildQueryApi('browser_worker_notifications'),
     },
 
     execute: async () => {
