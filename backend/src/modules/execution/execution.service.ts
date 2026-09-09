@@ -66,8 +66,6 @@ export class ExecutionService {
         command: taskRecord?.command,
       });
     } catch (error) {
-      // Backwards-compatible recovery for old persisted test cases and focused
-      // execution tests that predate canonical task/project URL propagation.
       const legacyTarget = cases
         .flatMap((tCase: any) => Array.isArray(tCase.steps) ? tCase.steps : [])
         .find((step: any) => step?.action === 'navigate' && /^https?:\/\//i.test(step?.target || ''))
@@ -117,9 +115,9 @@ export class ExecutionService {
       ? Array.from(new Set([...existingNames, options.testName]))
       : existingNames;
     const symptomCount = Math.max(
-      Number(currentAnalysis.symptomCount || 0) + (existing ? 1 : 0),
       symptomTestResultIds.length,
       symptomNames.length,
+      Number(currentAnalysis.symptomCount || 0),
       1,
     );
 
@@ -207,25 +205,60 @@ export class ExecutionService {
     await this.db.update(runs).set({ status: 'running' }).where(eq(runs.id, runId));
     broadcastRunEvent(runId, 'run_started', { runId, status: 'running' });
 
-    const cases = await this.db.select().from(testCases).where(eq(testCases.runId, runId));
-    let runStatus: 'passed' | 'failed' | 'error' | 'stopped' = cases.length === 0 ? 'passed' : 'passed';
+    let cases: any[] = [];
+    let runStatus: 'passed' | 'failed' | 'error' | 'stopped' = 'error';
     let effectiveTargetUrl: string | undefined;
     let session: any;
     let passedCount = 0;
     let failedCount = 0;
 
     try {
+      cases = await this.db.select().from(testCases).where(eq(testCases.runId, runId));
+      runStatus = 'passed';
+
       try {
         effectiveTargetUrl = await this.resolveRunTargetUrl(run, cases);
       } catch (error: any) {
         runStatus = 'error';
         const message = error?.message || 'Target URL is missing or malformed';
-        await this.upsertRootIssue({
-          runId,
-          root: deriveExecutionRootCause(message),
-          errorMessage: message,
-          affectedUrl: null,
-        });
+        const root = deriveExecutionRootCause(message);
+
+        if (cases.length === 0) {
+          await this.upsertRootIssue({ runId, root, errorMessage: message, affectedUrl: null });
+        } else {
+          // The same propagation fault may block many tests. Preserve each test
+          // result for accurate run/report counts, but keep one shared root issue.
+          for (const tCase of cases) {
+            const [blockedResult] = await this.db.insert(testResults).values({
+              runId,
+              testCaseId: tCase.id,
+              name: tCase.name,
+              status: 'error',
+              durationMs: 0,
+              summary: message,
+              errorMessage: message,
+              assertions: [],
+            }).returning();
+            failedCount += 1;
+            await this.upsertRootIssue({
+              runId,
+              root,
+              errorMessage: message,
+              testResultId: blockedResult?.id || null,
+              testName: tCase.name,
+              affectedUrl: null,
+              reproductionSteps: [`Resolve the configured target URL before executing ${tCase.name}`],
+            });
+            broadcastRunEvent(runId, 'test_completed', {
+              runId,
+              testCaseId: tCase.id,
+              name: tCase.name,
+              status: 'error',
+              errorMessage: message,
+              durationMs: 0,
+            });
+          }
+        }
         return;
       }
 
@@ -285,9 +318,7 @@ export class ExecutionService {
             }
           }
 
-          if (testStatus === 'stopped') {
-            // Do not continue assertions after cancellation.
-          } else {
+          if (testStatus !== 'stopped') {
             const visualDefects = await session.evaluateVisualQA();
             if (visualDefects.length > 0) {
               for (const defect of visualDefects) {
@@ -477,8 +508,6 @@ export class ExecutionService {
         }).where(eq(tasks.id, run.taskId));
       }
 
-      // Every completed execution emits one durable machine-readable run report.
-      // The Reports UI reads this same run/evidence data; no mock report state is introduced.
       try {
         const reportMeta = await this.evidenceService.storeEvidence({
           filename: `run_report_${runId}.json`,
