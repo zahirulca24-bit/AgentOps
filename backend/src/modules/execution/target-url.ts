@@ -46,13 +46,14 @@ export interface EffectiveTargetUrlInput {
 }
 
 export function resolveEffectiveTargetUrl(input: EffectiveTargetUrlInput): string {
-  const candidate =
-    cleanCandidate(input.runTargetUrl) ||
-    cleanCandidate(input.taskTargetUrl) ||
-    cleanCandidate(input.projectTargetUrl) ||
-    extractTargetUrlFromCommand(input.command);
+  const candidates = [
+    cleanCandidate(input.runTargetUrl),
+    cleanCandidate(input.taskTargetUrl),
+    cleanCandidate(input.projectTargetUrl),
+    extractTargetUrlFromCommand(input.command),
+  ].filter((candidate): candidate is string => Boolean(candidate));
 
-  if (!candidate) {
+  if (candidates.length === 0) {
     throw new AppError(
       'VALIDATION_ERROR',
       'Target URL is missing from the run, task, project, and command',
@@ -60,7 +61,17 @@ export function resolveEffectiveTargetUrl(input: EffectiveTargetUrlInput): strin
     );
   }
 
-  return normalizeAbsoluteTargetUrl(candidate);
+  // A malformed value in one layer must not poison a valid canonical value from
+  // the next layer. This is the core propagation fallback chain.
+  for (const candidate of candidates) {
+    try {
+      return normalizeAbsoluteTargetUrl(candidate);
+    } catch {
+      // Continue to the next real backend source.
+    }
+  }
+
+  throw new AppError('VALIDATION_ERROR', 'Target URL is malformed in all available run contexts', 400);
 }
 
 /**
@@ -83,8 +94,6 @@ export function resolveNavigationUrl(candidate: string | undefined, effectiveTar
       return assertHttpProtocol(new URL(`${baseUrl.protocol}//${raw}`)).toString();
     }
 
-    // Selectors and free-form text are not valid navigation targets. Treat them
-    // as a generation/propagation miss instead of navigating to an encoded path.
     if (/\s/.test(raw) || /^[.#\[]/.test(raw)) return base;
 
     return assertHttpProtocol(new URL(raw, base)).toString();
