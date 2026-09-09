@@ -158,7 +158,7 @@ Prepare AgentOps for persistent real-world operation.
 - [ ] Dependency and secret scanning automated
 - [x] Database changes support plan/dry-run
 - [x] Destructive DB operations require explicit approval
-- [ ] Scheduled jobs cannot overlap uncontrollably
+- [x] Scheduled jobs cannot overlap uncontrollably
 - [ ] Production monitoring has sensible alert thresholds
 - [ ] Notifications do not leak secrets
 - [x] Reports contain evidence and actionable remediation
