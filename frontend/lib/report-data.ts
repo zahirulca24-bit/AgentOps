@@ -22,12 +22,24 @@ export interface FormattedReport {
   rootIssues: RootIssue[];
 }
 
+function normalizedHttpUrl(value?: string | null): string {
+  const candidate = value?.trim();
+  if (!candidate) return '';
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return '';
+    return url.toString();
+  } catch {
+    return '';
+  }
+}
+
 export function extractTargetUrl(run: ApiRun): string {
-  if (run.task?.targetUrl?.trim()) return run.task.targetUrl.trim();
-  if (run.task?.project?.targetUrl?.trim()) return run.task.project.targetUrl.trim();
-  if (run.task?.command) {
-    const match = run.task.command.match(/https?:\/\/[^\s<>"'`\])}]+/i);
-    if (match) return match[0].replace(/[.,;:!?]+$/, '');
+  const commandMatch = run.task?.command?.match(/https?:\/\/[^\s<>"'`\])}]+/i)?.[0]?.replace(/[.,;:!?]+$/, '');
+  const candidates = [run.task?.targetUrl, run.task?.project?.targetUrl, commandMatch];
+  for (const candidate of candidates) {
+    const normalized = normalizedHttpUrl(candidate);
+    if (normalized) return normalized;
   }
   return '';
 }
