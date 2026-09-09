@@ -271,6 +271,17 @@ export interface ApiCommandChatResult {
   approval?: { approvalId: string; status: string };
 }
 
+export interface ApiApprovalRequest {
+  approvalId: string;
+  actionCategory: string;
+  status: 'pending' | 'approved' | 'rejected' | 'expired';
+  resourceId?: string | null;
+  actionSummary: string;
+  requestedBy: string;
+  requestedAt: string;
+  updatedAt: string;
+}
+
 interface ApiEnvelope<T> { data: T }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -294,6 +305,8 @@ export const api = {
     request<ApiEnvelope<{ run: ApiRun; testsGenerated: number; results: ApiTestResult[] }>>(`/api/v1/tasks/${taskId}/execute`, { method: 'POST' }),
   listRuns: () => request<ApiEnvelope<ApiRun[]>>('/api/v1/runs'),
   getRun: (id: string) => request<ApiEnvelope<ApiRun>>(`/api/v1/runs/${id}`),
+  listApprovals: (status?: 'pending' | 'approved' | 'rejected' | 'expired') =>
+    request<ApiEnvelope<ApiApprovalRequest[]>>(`/api/v1/approvals${status ? `?status=${status}` : ''}`),
   listIssues: (params?: { runId?: string; severity?: string; status?: string }) => {
     const searchParams = new URLSearchParams();
     if (params?.runId) searchParams.set('runId', params.runId);

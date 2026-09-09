@@ -10,6 +10,7 @@ import {
   RecentCommandsList,
   SafetyNotice,
   StagedDispatchBanner,
+  MissionControl,
 } from '@/components/command';
 import { Card, CardContent } from '@/components/ui';
 import {
@@ -103,22 +104,18 @@ export default function CommandCenterPage() {
       id="agentops-command-center"
       className="space-y-6 sm:space-y-8 animate-in fade-in duration-150"
     >
-      {/* 1. Header */}
-      <CommandHeader
-        onReset={handleResetForm}
-        hasInput={hasAnyInput}
-      />
+      <MissionControl />
 
-      {/* 2. Staged Dispatch Banner (when a command is submitted in frontend preview mode) */}
-      {stagedPayload && (
-        <StagedDispatchBanner
-          payload={stagedPayload}
-          onDismiss={() => setStagedPayload(null)}
-        />
-      )}
-
-      {/* 3. Main Command Workspace Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+      <details className="group rounded-xl border border-border bg-surface">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 text-sm font-semibold text-foreground marker:content-none">
+          Advanced manual QA controls
+          <span className="text-xs font-normal text-muted-foreground group-open:hidden">Open dispatcher</span>
+          <span className="hidden text-xs font-normal text-muted-foreground group-open:inline">Hide dispatcher</span>
+        </summary>
+        <div className="border-t border-border p-4 sm:p-6">
+          <CommandHeader onReset={handleResetForm} hasInput={hasAnyInput} />
+          {stagedPayload && <div className="mt-6"><StagedDispatchBanner payload={stagedPayload} onDismiss={() => setStagedPayload(null)} /></div>}
+          <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         {/* Left Column: Target URL + Primary Command Composer + QA Options (2 Cols) */}
         <div className="lg:col-span-2 space-y-6 min-w-0">
           {/* Main Formulation Card */}
@@ -167,15 +164,15 @@ export default function CommandCenterPage() {
 
           <SafetyNotice />
         </div>
-      </div>
-
-      {/* 4. Recent Commands & Presets */}
-      <section aria-label="Recent Commands and Presets">
+          </div>
+          <section className="mt-6" aria-label="Recent Commands and Presets">
         <RecentCommandsList
           onSelectPreset={handleSelectPreset}
           disabled={isSubmitting}
         />
-      </section>
+          </section>
+        </div>
+      </details>
     </div>
   );
 }
