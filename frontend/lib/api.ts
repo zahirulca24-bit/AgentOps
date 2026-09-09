@@ -261,6 +261,16 @@ export interface ApiSelfFixLoopResult {
   escalationSummary?: string | null;
 }
 
+export interface ApiCommandChatResult {
+  intent: 'qa' | 'runs' | 'issues' | 'reports' | 'github' | 'deploy';
+  summary: string;
+  destination: string;
+  progress: string[];
+  status: 'ready' | 'blocked' | 'approval_required';
+  permission: { tier: 'Green' | 'Yellow' | 'Red'; outcome: string; reason: string };
+  approval?: { approvalId: string; status: string };
+}
+
 interface ApiEnvelope<T> { data: T }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -274,6 +284,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   baseUrl: API_BASE,
+  dispatchCommandChat: (command: string, context: { page: string; runId?: string }) =>
+    request<ApiEnvelope<ApiCommandChatResult>>('/api/v1/command-chat/dispatch', { method: 'POST', body: JSON.stringify({ command, context }) }),
   createProject: (name: string, targetUrl: string) =>
     request<ApiEnvelope<{ id: string }>>('/api/v1/projects', { method: 'POST', body: JSON.stringify({ name, targetUrl }) }),
   createTask: (projectId: string, command: string, targetUrl: string) =>

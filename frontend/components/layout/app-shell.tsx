@@ -6,6 +6,7 @@ import { usePathname } from '@/lib/router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Toaster } from 'sonner';
 import { useTheme } from '@/lib/theme';
+import { GlobalCommandChat } from '@/components/command-chat';
 
 export interface AppShellProps {
   children: React.ReactNode;
@@ -91,6 +92,7 @@ export function AppShell({ children }: AppShellProps) {
       </div>
 
       <MobileNavigation isOpen={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
+      <GlobalCommandChat />
 
       <Toaster
         theme={theme === 'dark' ? 'dark' : 'light'}
