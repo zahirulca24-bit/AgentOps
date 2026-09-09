@@ -20,9 +20,7 @@ export default function SettingsPage() {
     <div className="flex gap-1 overflow-x-auto border-b border-border" role="tablist" aria-label="Settings sections">{SETTINGS_TABS.map((item) => <button key={item} type="button" role="tab" aria-selected={tab === item} onClick={() => setTab(item)} className={`shrink-0 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${tab === item ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>{item}</button>)}</div>
     {tab === 'General' && <General />}
     {tab === 'Integrations' && <Integrations items={integrations} audit={audit} onToggle={toggle} onTest={test} />}
-    {tab === 'Permissions' && <Permissions onAudit={() => log('Permission policy reviewed · audit trail retained')} />}
-    {tab === 'Credentials' && <Credentials />}
-    {tab === 'Notifications' && <Notifications />}
+    {tab === 'Security' && <Permissions onAudit={() => log('Permission policy reviewed · audit trail retained')} />}
     <div role="status" className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground"><ShieldCheck className="h-4 w-4 shrink-0 text-primary" />{notice}</div>
   </div>;
 }
