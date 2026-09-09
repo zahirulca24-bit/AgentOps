@@ -1,13 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { CommandChatService } from '../../src/modules/command-chat/command-chat.service.js';
+import { AGENT_ACTIVITY_WINDOW_MS, isAgentActive } from '../../src/modules/command-chat/chief-of-staff.service.js';
 import type { AIProvider } from '../../src/core/ai/provider.js';
 
 const ai = (intent: string): AIProvider => ({ generateStructuredQA: async () => ({ intent, summary: 'token=do-not-display' }) });
 
 describe('CommandChatService', () => {
+  it('expires historical specialist activity instead of presenting it as live work', () => {
+    const now = Date.now();
+    expect(isAgentActive(new Date(now - AGENT_ACTIVITY_WINDOW_MS + 1), now)).toBe(true);
+    expect(isAgentActive(new Date(now - AGENT_ACTIVITY_WINDOW_MS - 1), now)).toBe(false);
+  });
   it('routes QA requests through the QA command workspace with policy evaluation', async () => {
     const result = await new CommandChatService(ai('qa')).dispatch('Test the checkout flow', { page: '/runs', runId: 'run-1' });
     expect(result.destination).toBe('/command');
+    expect(result.specialist).toBe('QA');
     expect(result.permission.action).toBe('trigger_qa_run');
     expect(result.status).toBe('ready');
   });
