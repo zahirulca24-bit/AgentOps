@@ -4,5 +4,6 @@ export * from './command-composer';
 export * from './command-options-card';
 export * from './run-summary-card';
 export * from './recent-commands-list';
+export * from './mission-control';
 export * from './safety-notice';
 export * from './staged-dispatch-banner';
