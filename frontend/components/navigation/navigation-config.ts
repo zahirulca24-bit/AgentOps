@@ -51,11 +51,11 @@ export const NAVIGATION_ITEMS: NavigationItem[] = [
     description: 'Autonomous control center for QA and connected tools.',
   },
   {
-    label: 'Browser Sessions',
+    label: 'Browser Workers',
     href: '/sessions',
     icon: Globe,
     section: 'main',
-    description: 'Observe and manage AgentOps browser test sessions.',
+    description: 'Run and monitor secure autonomous browser workers.',
   },
 
   {
