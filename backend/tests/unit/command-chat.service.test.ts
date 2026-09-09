@@ -8,6 +8,7 @@ describe('CommandChatService', () => {
   it('routes QA requests through the QA command workspace with policy evaluation', async () => {
     const result = await new CommandChatService(ai('qa')).dispatch('Test the checkout flow', { page: '/runs', runId: 'run-1' });
     expect(result.destination).toBe('/command');
+    expect(result.specialist).toBe('QA');
     expect(result.permission.action).toBe('trigger_qa_run');
     expect(result.status).toBe('ready');
   });

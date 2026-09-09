@@ -349,6 +349,25 @@ export const databaseQueryLogs = pgTable('database_query_logs', {
   };
 });
 
+// Chief of Staff retrieval memory. Content is redacted before it reaches either table.
+export const agentMemoryEntries = pgTable('agent_memory_entries', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  kind: varchar('kind', { length: 64 }).notNull(),
+  subject: varchar('subject', { length: 255 }).notNull(),
+  content: text('content').notNull(),
+  metadata: jsonb('metadata'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => ({ kindIdx: index('agent_memory_kind_idx').on(table.kind), createdIdx: index('agent_memory_created_idx').on(table.createdAt) }));
+
+export const agentCommunicationLogs = pgTable('agent_communication_logs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  speaker: varchar('speaker', { length: 255 }).notNull(),
+  recipient: varchar('recipient', { length: 255 }).notNull(),
+  agent: varchar('agent', { length: 64 }),
+  message: text('message').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => ({ createdIdx: index('agent_communication_created_idx').on(table.createdAt) }));
+
 
 
 

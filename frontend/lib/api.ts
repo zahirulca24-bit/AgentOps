@@ -269,7 +269,10 @@ export interface ApiCommandChatResult {
   status: 'ready' | 'blocked' | 'approval_required';
   permission: { tier: 'Green' | 'Yellow' | 'Red'; outcome: string; reason: string };
   approval?: { approvalId: string; status: string };
+  specialist?: string;
 }
+export interface ApiSpecialistAgent { id: string; name: string; capability: string; permission: 'Green' | 'Yellow' | 'Red'; status: 'Active' | 'Idle'; currentTask: string | null; lastActivity: string | null; }
+export interface ApiCommunicationLog { id: string; speaker: string; recipient: string; agent?: string | null; message: string; createdAt: string; }
 
 interface ApiEnvelope<T> { data: T }
 
@@ -286,6 +289,8 @@ export const api = {
   baseUrl: API_BASE,
   dispatchCommandChat: (command: string, context: { page: string; runId?: string }) =>
     request<ApiEnvelope<ApiCommandChatResult>>('/api/v1/command-chat/dispatch', { method: 'POST', body: JSON.stringify({ command, context }) }),
+  listAgents: () => request<ApiEnvelope<ApiSpecialistAgent[]>>('/api/v1/agents'),
+  listAgentCommunications: () => request<ApiEnvelope<ApiCommunicationLog[]>>('/api/v1/agents/communications'),
   createProject: (name: string, targetUrl: string) =>
     request<ApiEnvelope<{ id: string }>>('/api/v1/projects', { method: 'POST', body: JSON.stringify({ name, targetUrl }) }),
   createTask: (projectId: string, command: string, targetUrl: string) =>
