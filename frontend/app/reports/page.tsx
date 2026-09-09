@@ -3,117 +3,25 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { usePathname, Link } from '@/lib/router';
 import { api, type ApiRun } from '@/lib/api';
+import { formatReportData, type FormattedReport } from '@/lib/report-data';
 import { Badge, Button, Card, Input } from '@/components/ui';
-import { 
-  ArrowLeft, 
-  AlertCircle, 
-  FileBarChart, 
-  FileText, 
-  Loader2, 
-  Search, 
-  CheckCircle2, 
-  XCircle, 
-  Bug, 
-  Camera, 
-  Terminal, 
-  Globe, 
-  Clock, 
-  Calendar, 
+import {
+  ArrowLeft,
+  AlertCircle,
+  FileBarChart,
+  FileText,
+  Loader2,
+  Search,
+  CheckCircle2,
+  XCircle,
+  Bug,
+  Camera,
+  Terminal,
+  Globe,
+  Clock,
+  Calendar,
   ExternalLink,
-  ShieldCheck
 } from 'lucide-react';
-
-interface FormattedReport {
-  run: ApiRun;
-  appName: string;
-  targetUrl: string;
-  testDate: string;
-  day: string;
-  startTime: string;
-  endTime: string;
-  totalDuration: string;
-  runId: string;
-  environment: string;
-  finalStatus: 'PASS' | 'FAIL' | 'DEGRADED';
-  passedCount: number;
-  failedCount: number;
-  issuesCount: number;
-  evidenceCount: number;
-  consoleErrorsCount: number;
-  networkErrorsCount: number;
-}
-
-function extractTargetUrl(run: ApiRun): string {
-  if (run.task?.targetUrl) return run.task.targetUrl;
-  if (run.task?.project?.targetUrl) return run.task.project.targetUrl;
-  if (run.task?.command) {
-    const match = run.task.command.match(/https?:\/\/[^\s]+/i);
-    if (match) return match[0];
-  }
-  return 'http://localhost:3000';
-}
-
-function formatReportData(run: ApiRun): FormattedReport {
-  const startedDate = new Date(run.startedAt || run.createdAt);
-  const endDate = run.completedAt ? new Date(run.completedAt) : null;
-
-  const testDate = startedDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-  const day = startedDate.toLocaleDateString('en-US', { weekday: 'long' });
-  const startTime = startedDate.toLocaleTimeString('en-US', { hour12: false });
-  const endTime = endDate ? endDate.toLocaleTimeString('en-US', { hour12: false }) : 'In Progress';
-
-  const startMs = startedDate.getTime();
-  const endMs = endDate ? endDate.getTime() : Date.now();
-  const diffSec = Math.max(0, Math.round((endMs - startMs) / 1000));
-  const totalDuration = diffSec < 60 ? `${diffSec}s` : `${Math.floor(diffSec / 60)}m ${diffSec % 60}s`;
-
-  const results = run.testResults || [];
-  const passedCount = results.filter(r => r.status === 'passed').length;
-  const failedCount = results.filter(r => ['failed', 'error'].includes(r.status)).length;
-  const issuesCount = run.issues?.length || 0;
-  const evidenceCount = run.evidence?.length || 0;
-
-  const consoleEvidenceCount = run.evidence?.filter(e => e.type === 'console_log').length || 0;
-  const issueConsoleCount = run.issues?.reduce((acc, issue) => {
-    const list = Array.isArray(issue.consoleEvidence) ? issue.consoleEvidence : [];
-    return acc + list.length;
-  }, 0) || 0;
-  const consoleErrorsCount = Math.max(consoleEvidenceCount, issueConsoleCount);
-
-  const networkEvidenceCount = run.evidence?.filter(e => e.type === 'network_log').length || 0;
-  const issueNetworkCount = run.issues?.reduce((acc, issue) => {
-    const list = Array.isArray(issue.networkEvidence) ? issue.networkEvidence : [];
-    return acc + list.length;
-  }, 0) || 0;
-  const networkErrorsCount = Math.max(networkEvidenceCount, issueNetworkCount);
-
-  let finalStatus: 'PASS' | 'FAIL' | 'DEGRADED' = 'PASS';
-  if (run.status === 'failed' || run.status === 'error' || run.status === 'aborted' || failedCount > 0) {
-    finalStatus = 'FAIL';
-  } else if (run.status === 'stopped' || issuesCount > 0) {
-    finalStatus = 'DEGRADED';
-  }
-
-  return {
-    run,
-    appName: run.task?.project?.name || 'AgentOps Autonomous QA',
-    targetUrl: extractTargetUrl(run),
-    testDate,
-    day,
-    startTime,
-    endTime,
-    totalDuration,
-    runId: run.id,
-    environment: process.env.NODE_ENV || 'test',
-    finalStatus,
-    passedCount,
-    failedCount,
-    issuesCount,
-    evidenceCount,
-    consoleErrorsCount,
-    networkErrorsCount,
-  };
-}
 
 export default function ReportsPage() {
   const id = usePathname().split('/').filter(Boolean)[1];
@@ -234,7 +142,6 @@ function ReportCard({ report, showFullDetails = false }: { report: FormattedRepo
 
   return (
     <Card className="p-6 space-y-6 border border-border bg-surface shadow-xs">
-      {/* 1. QA REPORT HEADER */}
       <div className="space-y-4 pb-5 border-b border-border">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -251,14 +158,18 @@ function ReportCard({ report, showFullDetails = false }: { report: FormattedRepo
             </h2>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-1 font-mono">
               <Globe className="w-3.5 h-3.5 text-primary shrink-0" />
-              <a
-                href={report.targetUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="hover:underline text-primary truncate max-w-xl"
-              >
-                {report.targetUrl}
-              </a>
+              {report.targetUrl ? (
+                <a
+                  href={report.targetUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="hover:underline text-primary truncate max-w-xl"
+                >
+                  {report.targetUrl}
+                </a>
+              ) : (
+                <span>Target URL unavailable</span>
+              )}
             </div>
           </div>
 
@@ -271,7 +182,6 @@ function ReportCard({ report, showFullDetails = false }: { report: FormattedRepo
           </div>
         </div>
 
-        {/* Detailed Header Fields Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 p-4 rounded-xl bg-surface-muted/50 border border-border/80 text-xs">
           <div>
             <span className="text-[10px] font-mono text-muted-foreground uppercase flex items-center gap-1">
@@ -305,55 +215,22 @@ function ReportCard({ report, showFullDetails = false }: { report: FormattedRepo
         </div>
       </div>
 
-      {/* 2. METRICS & BREAKDOWN */}
       <div>
         <h3 className="text-xs font-mono uppercase tracking-wider font-semibold text-muted-foreground mb-3">
           Metrics & Findings Breakdown
         </h3>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <MetricBox
-            label="Passed Tests"
-            value={report.passedCount}
-            icon={<CheckCircle2 className="w-4 h-4 text-emerald-500" />}
-            colorClass="text-emerald-500"
-          />
-          <MetricBox
-            label="Failed Tests"
-            value={report.failedCount}
-            icon={<XCircle className="w-4 h-4 text-rose-500" />}
-            colorClass="text-rose-500"
-          />
-          <MetricBox
-            label="Issues Found"
-            value={report.issuesCount}
-            icon={<Bug className="w-4 h-4 text-amber-500" />}
-            colorClass="text-amber-500"
-          />
-          <MetricBox
-            label="Evidence Count"
-            value={report.evidenceCount}
-            icon={<Camera className="w-4 h-4 text-blue-500" />}
-            colorClass="text-blue-500"
-          />
-          <MetricBox
-            label="Console Errors"
-            value={report.consoleErrorsCount}
-            icon={<Terminal className="w-4 h-4 text-purple-500" />}
-            colorClass="text-purple-500"
-          />
-          <MetricBox
-            label="Network Errors"
-            value={report.networkErrorsCount}
-            icon={<Globe className="w-4 h-4 text-indigo-500" />}
-            colorClass="text-indigo-500"
-          />
+          <MetricBox label="Passed Tests" value={report.passedCount} icon={<CheckCircle2 className="w-4 h-4 text-emerald-500" />} colorClass="text-emerald-500" />
+          <MetricBox label="Failed Tests" value={report.failedCount} icon={<XCircle className="w-4 h-4 text-rose-500" />} colorClass="text-rose-500" />
+          <MetricBox label="Issues Found" value={report.issuesCount} icon={<Bug className="w-4 h-4 text-amber-500" />} colorClass="text-amber-500" />
+          <MetricBox label="Evidence Count" value={report.evidenceCount} icon={<Camera className="w-4 h-4 text-blue-500" />} colorClass="text-blue-500" />
+          <MetricBox label="Console Errors" value={report.consoleErrorsCount} icon={<Terminal className="w-4 h-4 text-purple-500" />} colorClass="text-purple-500" />
+          <MetricBox label="Network Errors" value={report.networkErrorsCount} icon={<Globe className="w-4 h-4 text-indigo-500" />} colorClass="text-indigo-500" />
         </div>
       </div>
 
-      {/* 3. FULL DETAILS (When inspecting single report) */}
       {showFullDetails && (
         <div className="space-y-5 pt-4 border-t border-border">
-          {/* Test Case Executions */}
           <div className="space-y-3">
             <h3 className="font-semibold text-sm text-foreground">Executed Test Cases ({report.run.testResults?.length || 0})</h3>
             {!report.run.testResults?.length ? (
@@ -373,24 +250,26 @@ function ReportCard({ report, showFullDetails = false }: { report: FormattedRepo
             )}
           </div>
 
-          {/* Issues Recorded */}
-          {Boolean(report.run.issues?.length) && (
+          {report.rootIssues.length > 0 && (
             <div className="space-y-3 pt-3 border-t border-border">
               <h3 className="font-semibold text-sm text-foreground flex items-center gap-1.5">
-                <Bug className="w-4 h-4 text-amber-500" /> Recorded Defects & Issues ({report.run.issues?.length})
+                <Bug className="w-4 h-4 text-amber-500" /> Recorded Root Issues ({report.rootIssues.length})
               </h3>
               <div className="space-y-2">
-                {report.run.issues?.map((issue) => (
-                  <div key={issue.id} className="p-3 rounded-lg border border-border bg-surface flex items-start justify-between gap-3 text-xs">
-                    <div>
-                      <p className="font-medium text-foreground">{issue.title}</p>
-                      <p className="text-muted-foreground mt-0.5">{issue.description || 'No description'}</p>
+                {report.rootIssues.map((root) => {
+                  const issue = root.issues[0];
+                  return (
+                    <div key={root.key} className="p-3 rounded-lg border border-border bg-surface flex items-start justify-between gap-3 text-xs">
+                      <div>
+                        <p className="font-medium text-foreground">{root.rootCause}</p>
+                        <p className="text-muted-foreground mt-0.5">{root.failedTests} failed test symptom{root.failedTests === 1 ? '' : 's'} · {issue.description || 'No description'}</p>
+                      </div>
+                      <Badge variant={issue.severity === 'critical' || issue.severity === 'high' ? 'danger' : 'warning'}>
+                        {issue.severity}
+                      </Badge>
                     </div>
-                    <Badge variant={issue.severity === 'critical' || issue.severity === 'high' ? 'danger' : 'warning'}>
-                      {issue.severity}
-                    </Badge>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
