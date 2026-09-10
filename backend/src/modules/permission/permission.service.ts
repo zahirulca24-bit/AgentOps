@@ -41,6 +41,7 @@ export class PermissionEngineService {
 
   private YELLOW_ACTIONS = new Set([
     'create_preview_deployment',
+    'create_browser_worker',
     'trigger_qa_run',
     'propose_code_fix',
     'run_unit_tests',

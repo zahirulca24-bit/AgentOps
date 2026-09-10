@@ -4,7 +4,7 @@ import { agentCommunicationLogs, agentMemoryEntries } from '../../infrastructure
 import { redactString } from '../../infrastructure/redact/redactSensitive.js';
 
 export const SPECIALISTS = [
-  ['coding', 'Coding', 'Code changes and reviews', 'Yellow'], ['bug_finder', 'Bug Finder', 'Issue triage and root-cause analysis', 'Green'], ['qa', 'QA', 'Test planning and execution', 'Yellow'], ['github', 'GitHub', 'Repository, branches and pull requests', 'Yellow'], ['deploy', 'Deploy', 'Preview and production deployments', 'Red'], ['security', 'Security', 'Security scans and credential safety', 'Red'], ['database', 'Database', 'Query analysis and migrations', 'Red'], ['email', 'Email', 'Email drafting and sending', 'Red'], ['calendar', 'Calendar', 'Calendar planning and updates', 'Red'], ['messaging', 'Messaging', 'Message drafting and delivery', 'Red'],
+  ['coding', 'Coding', 'Code changes and reviews', 'Yellow'], ['bug_finder', 'Bug Finder', 'Issue triage and root-cause analysis', 'Green'], ['qa', 'QA', 'Test planning and execution', 'Yellow'], ['browser_worker', 'Browser Worker', 'Persistent and scheduled browser checks', 'Yellow'], ['github', 'GitHub', 'Repository, branches and pull requests', 'Yellow'], ['deploy', 'Deploy', 'Preview and production deployments', 'Red'], ['security', 'Security', 'Security scans and credential safety', 'Red'], ['database', 'Database', 'Query analysis and migrations', 'Red'], ['email', 'Email', 'Email drafting and sending', 'Red'], ['calendar', 'Calendar', 'Calendar planning and updates', 'Red'], ['messaging', 'Messaging', 'Message drafting and delivery', 'Red'],
 ] as const;
 
 // A communication log is historical evidence, not an execution lease. Keep the

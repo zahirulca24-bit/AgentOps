@@ -159,7 +159,7 @@ export async function createApp(config: EnvConfig) {
   await app.register(credentialVaultRoutes);
   await app.register(securityScannerRoutes);
   await app.register(databaseAgentRoutes);
-  await app.register(commandChatRoutes, { db: dbClient.db, aiProvider });
+  await app.register(commandChatRoutes, { db: dbClient.db, aiProvider, browserWorkerService });
 
   // Production/dev scheduler. Tests call scheduler.tick/service.runDueWorkers deterministically.
   if (config.NODE_ENV !== 'test') browserWorkerScheduler.start();
