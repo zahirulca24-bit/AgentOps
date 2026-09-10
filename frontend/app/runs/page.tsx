@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { usePathname, Link } from '@/lib/router';
 import { api, type ApiRun } from '@/lib/api';
+import { buildIssueContexts, groupRootIssues } from '@/lib/issue-groups';
 import { Badge, Button, Card, Input } from '@/components/ui';
 import { ArrowLeft, AlertCircle, CheckCircle2, XCircle, Clock3, Search, FlaskConical, Loader2, StopCircle, ImageIcon, Bug } from 'lucide-react';
 import { toast } from 'sonner';
@@ -31,7 +32,7 @@ function RunList() {
       .finally(() => setLoading(false)); 
   }, []);
 
-  const filtered = useMemo(() => runs.filter(r => !query.trim() || r.id.toLowerCase().includes(query.toLowerCase()) || r.status.includes(query.toLowerCase())), [runs, query]);
+  const filtered = useMemo(() => runs.filter(r => !query.trim() || r.id.toLowerCase().includes(query.toLowerCase()) || r.status.includes(query.toLowerCase()) || r.task?.project?.name?.toLowerCase().includes(query.toLowerCase())), [runs, query]);
 
   return <div className="space-y-6 animate-in fade-in duration-150">
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-3">
@@ -40,7 +41,7 @@ function RunList() {
     </div>
     <Input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search runs..." leftIcon={<Search className="w-4 h-4"/>}/>
     {loading ? <State icon={<Loader2 className="animate-spin"/>} text="Loading runs..."/> : error ? <State icon={<AlertCircle/>} text={error}/> : filtered.length === 0 ? <State text="No runs yet."/> :
-      <div className="border border-border rounded-xl overflow-x-auto bg-surface"><table className="w-full text-sm"><thead><tr className="bg-surface-muted text-left text-xs text-muted-foreground"><th className="p-3">Run</th><th className="p-3">Status</th><th className="p-3">Started</th><th className="p-3">Duration</th><th className="p-3"></th></tr></thead><tbody>{filtered.map(run => <tr key={run.id} className="border-t border-border"><td className="p-3 font-mono text-xs">{run.id}</td><td className="p-3"><Badge variant={variant(run.status)}>{run.status}</Badge></td><td className="p-3 text-xs text-muted-foreground">{new Date(run.startedAt).toLocaleString()}</td><td className="p-3 font-mono text-xs">{elapsed(run)}</td><td className="p-3 text-right"><Link href={`/runs/${run.id}`}><Button variant="ghost" size="sm">Details</Button></Link></td></tr>)}</tbody></table></div>}
+      <div className="border border-border rounded-xl overflow-x-auto bg-surface"><table className="w-full text-sm"><thead><tr className="bg-surface-muted text-left text-xs text-muted-foreground"><th className="p-3">Run</th><th className="p-3">Project / Target</th><th className="p-3">Status</th><th className="p-3">Started</th><th className="p-3">Duration</th><th className="p-3"></th></tr></thead><tbody>{filtered.map(run => <tr key={run.id} className="border-t border-border"><td className="p-3 font-mono text-xs">{run.id}</td><td className="p-3 text-xs"><div className="font-medium">{run.task?.project?.name || 'Project unavailable'}</div><div className="text-muted-foreground truncate max-w-xs">{run.task?.targetUrl || run.task?.project?.targetUrl || 'Target URL unavailable'}</div></td><td className="p-3"><Badge variant={variant(run.status)}>{run.status}</Badge></td><td className="p-3 text-xs text-muted-foreground">{new Date(run.startedAt).toLocaleString()}</td><td className="p-3 font-mono text-xs">{elapsed(run)}</td><td className="p-3 text-right"><Link href={`/runs/${run.id}`}><Button variant="ghost" size="sm">Details</Button></Link></td></tr>)}</tbody></table></div>}
   </div>;
 }
 
@@ -59,7 +60,6 @@ function RunDetail({ id }: { id: string }) {
     fetchRunDetails();
   }, [id]);
 
-  // Connect Real SSE Stream for live status & events
   useEffect(() => {
     if (!run || (run.status !== 'running' && run.status !== 'pending')) return;
 
@@ -71,7 +71,7 @@ function RunDetail({ id }: { id: string }) {
         if (data.event === 'run_completed' || data.event === 'run_cancelled' || data.event === 'test_completed' || data.event === 'issue_created') {
           fetchRunDetails();
         }
-      } catch (e) {}
+      } catch {}
     };
 
     eventSource.addEventListener('test_completed', () => fetchRunDetails());
@@ -79,7 +79,6 @@ function RunDetail({ id }: { id: string }) {
     eventSource.addEventListener('run_cancelled', () => fetchRunDetails());
     eventSource.addEventListener('issue_created', () => fetchRunDetails());
 
-    // Poll fallback every 3 seconds while running
     const interval = setInterval(fetchRunDetails, 3000);
 
     return () => {
@@ -106,6 +105,8 @@ function RunDetail({ id }: { id: string }) {
 
   const passed = run.testResults?.filter(t => t.status === 'passed').length ?? 0;
   const failed = run.testResults?.filter(t => ['failed','error'].includes(t.status)).length ?? 0;
+  const rootIssues = groupRootIssues(run.issues || [], buildIssueContexts([run]));
+  const activeWorkers = run.browserSessions?.filter(session => session.status === 'active').length || 0;
   const isRunning = run.status === 'running' || run.status === 'pending';
 
   return <div className="space-y-6">
@@ -131,12 +132,13 @@ function RunDetail({ id }: { id: string }) {
         {isRunning && <span className="flex items-center gap-1.5 text-xs text-blue-500 font-medium animate-pulse"><Loader2 className="w-3.5 h-3.5 animate-spin"/> Streaming Live Events</span>}
       </div>
       <p className="font-mono text-xs text-muted-foreground mt-1">{run.id}</p>
+      <p className="text-xs text-muted-foreground mt-1">{run.task?.project?.name || 'Project unavailable'} · {run.task?.targetUrl || run.task?.project?.targetUrl || 'Target URL unavailable'} · {activeWorkers} active worker{activeWorkers===1?'':'s'}</p>
     </div>
 
     <Card className="p-5 grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
       <Metric label="Passed" value={String(passed)} icon={<CheckCircle2 className="w-4 h-4 text-emerald-500"/>}/>
       <Metric label="Failed" value={String(failed)} icon={<XCircle className="w-4 h-4 text-red-500"/>}/>
-      <Metric label="Issues" value={String(run.issues?.length ?? 0)} icon={<Bug className="w-4 h-4 text-amber-500"/>}/>
+      <Metric label="Root Issues" value={String(rootIssues.length)} icon={<Bug className="w-4 h-4 text-amber-500"/>}/>
       <Metric label="Duration" value={elapsed(run)} icon={<Clock3 className="w-4 h-4"/>}/>
     </Card>
 
@@ -160,7 +162,6 @@ function RunDetail({ id }: { id: string }) {
                 </Badge>
               </div>
 
-              {/* Evidence Screenshot Preview */}
               {t.screenshotRef && (
                 <div className="mt-3 pt-3 border-t border-border/60">
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
@@ -182,24 +183,26 @@ function RunDetail({ id }: { id: string }) {
       )}
     </Card>
 
-    {/* Auto-Created Issues */}
-    {Boolean(run.issues?.length) && (
+    {rootIssues.length > 0 && (
       <Card className="p-5 space-y-4">
         <h2 className="font-semibold text-lg flex items-center gap-2">
-          <Bug className="w-5 h-5 text-amber-500"/> Detected Issues ({run.issues?.length})
+          <Bug className="w-5 h-5 text-amber-500"/> Detected Root Issues ({rootIssues.length})
         </h2>
         <div className="space-y-2">
-          {run.issues?.map(issue => (
-            <div key={issue.id} className="flex items-start justify-between gap-3 border border-border rounded-lg p-3 bg-surface">
-              <div>
-                <p className="text-sm font-medium">{issue.title}</p>
-                <p className="text-xs text-muted-foreground mt-1">{issue.description || 'No description provided'}</p>
+          {rootIssues.map(root => {
+            const issue = root.issues[0];
+            return (
+              <div key={root.key} className="flex items-start justify-between gap-3 border border-border rounded-lg p-3 bg-surface">
+                <div>
+                  <p className="text-sm font-medium">{root.rootCause}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{root.failedTests} failed test symptom{root.failedTests===1?'':'s'} · {issue.description || 'No description provided'}</p>
+                </div>
+                <Badge variant={issue.severity === 'critical' || issue.severity === 'high' ? 'danger' : 'warning'}>
+                  {issue.severity}
+                </Badge>
               </div>
-              <Badge variant={issue.severity === 'critical' || issue.severity === 'high' ? 'danger' : 'warning'}>
-                {issue.severity}
-              </Badge>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </Card>
     )}

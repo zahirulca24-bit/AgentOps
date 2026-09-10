@@ -3,12 +3,18 @@ import { promises as fs } from 'fs';
 import type { Database } from '../../infrastructure/db/client.js';
 import type { BrowserManager } from '../../infrastructure/browser/browser.manager.js';
 import type { EnvConfig } from '../../config/env.js';
-import { runs, testCases, testResults, issues, evidence } from '../../infrastructure/db/schema.js';
+import { projects, tasks, runs, testCases, testResults, issues, evidence } from '../../infrastructure/db/schema.js';
 import { AppError } from '../../core/errors.js';
 import type { TestStep, TestAssertion } from '../generator/generator.schema.js';
 import { broadcastRunEvent } from './execution.routes.js';
 import { EvidenceService } from '../evidence/evidence.service.js';
 import { SeverityClassifierService } from '../severity/severity.service.js';
+import { deriveExecutionRootCause, type ExecutionRootCause } from './root-cause.js';
+import {
+  normalizeAbsoluteTargetUrl,
+  resolveEffectiveTargetUrl,
+  resolveNavigationUrl,
+} from './target-url.js';
 
 export class ExecutionService {
   private activeCancelledRuns = new Set<string>();
@@ -33,35 +39,234 @@ export class ExecutionService {
     this.activeCancelledRuns.add(runId);
     await this.db.update(runs).set({ status: 'stopped', completedAt: new Date() }).where(eq(runs.id, runId));
 
+    const taskId = runRecord[0]?.taskId;
+    if (taskId) {
+      await this.db.update(tasks).set({ status: 'failed', updatedAt: new Date() }).where(eq(tasks.id, taskId));
+    }
+
     broadcastRunEvent(runId, 'run_cancelled', { runId, status: 'stopped', message: 'Run was cancelled by user' });
   }
 
+  private async resolveRunTargetUrl(run: any, cases: any[]): Promise<string> {
+    let taskRecord: any = null;
+    let projectRecord: any = null;
+
+    if (run?.taskId && this.db.query?.tasks) {
+      taskRecord = await this.db.query.tasks.findFirst({ where: eq(tasks.id, run.taskId) });
+    }
+
+    if (taskRecord?.projectId && this.db.query?.projects) {
+      projectRecord = await this.db.query.projects.findFirst({ where: eq(projects.id, taskRecord.projectId) });
+    }
+
+    try {
+      return resolveEffectiveTargetUrl({
+        taskTargetUrl: taskRecord?.targetUrl,
+        projectTargetUrl: projectRecord?.targetUrl,
+        command: taskRecord?.command,
+      });
+    } catch (error) {
+      const legacyTarget = cases
+        .flatMap((tCase: any) => Array.isArray(tCase.steps) ? tCase.steps : [])
+        .find((step: any) => step?.action === 'navigate' && /^https?:\/\//i.test(step?.target || ''))
+        ?.target;
+
+      if (legacyTarget) return normalizeAbsoluteTargetUrl(legacyTarget);
+      throw error;
+    }
+  }
+
+  private async listRunIssues(runId: string): Promise<any[]> {
+    if (this.db.query?.issues?.findMany) {
+      return this.db.query.issues.findMany({ where: eq(issues.runId, runId) });
+    }
+    return this.db.select().from(issues).where(eq(issues.runId, runId));
+  }
+
+  private async upsertRootIssue(options: {
+    runId: string;
+    root: ExecutionRootCause;
+    errorMessage: string;
+    testResultId?: string | null;
+    testName?: string | null;
+    browserSessionId?: string | null;
+    affectedUrl?: string | null;
+    screenshotRef?: string | null;
+    reproductionSteps?: string[];
+    expectedResult?: string;
+  }): Promise<any> {
+    const existingIssues = await this.listRunIssues(options.runId);
+    const existing = existingIssues.find((issue: any) =>
+      issue?.rootCauseAnalysis?.rootCauseKey === options.root.key
+    );
+
+    const currentAnalysis = existing?.rootCauseAnalysis || {};
+    const existingResultIds = Array.isArray(currentAnalysis.symptomTestResultIds)
+      ? currentAnalysis.symptomTestResultIds
+      : [];
+    const existingNames = Array.isArray(currentAnalysis.symptomNames)
+      ? currentAnalysis.symptomNames
+      : [];
+
+    const symptomTestResultIds = options.testResultId
+      ? Array.from(new Set([...existingResultIds, options.testResultId]))
+      : existingResultIds;
+    const symptomNames = options.testName
+      ? Array.from(new Set([...existingNames, options.testName]))
+      : existingNames;
+    const symptomCount = Math.max(
+      symptomTestResultIds.length,
+      symptomNames.length,
+      Number(currentAnalysis.symptomCount || 0),
+      1,
+    );
+
+    const rootCauseAnalysis = {
+      ...currentAnalysis,
+      rootCauseKey: options.root.key,
+      likelyCause: options.root.likelyCause,
+      confidence: 'high',
+      affectedArea: options.root.affectedArea,
+      recommendedNextAction: options.root.recommendedNextAction,
+      facts: Array.from(new Set([
+        ...(Array.isArray(currentAnalysis.facts) ? currentAnalysis.facts : []),
+        options.errorMessage,
+      ])).slice(0, 20),
+      inference: options.root.likelyCause,
+      symptomCount,
+      symptomTestResultIds,
+      symptomNames,
+    };
+
+    if (existing) {
+      await this.db.update(issues).set({
+        description: `${options.root.likelyCause} (${symptomCount} observed symptom${symptomCount === 1 ? '' : 's'} in this run)`,
+        actualResult: options.errorMessage,
+        affectedUrl: options.affectedUrl || existing.affectedUrl,
+        screenshotEvidence: options.screenshotRef
+          ? Array.from(new Set([...(Array.isArray(existing.screenshotEvidence) ? existing.screenshotEvidence : []), options.screenshotRef]))
+          : existing.screenshotEvidence,
+        rootCauseAnalysis,
+        updatedAt: new Date(),
+      }).where(eq(issues.id, existing.id));
+
+      return { ...existing, rootCauseAnalysis };
+    }
+
+    const classification = this.severityClassifier.classify({
+      title: options.root.title,
+      description: options.root.likelyCause,
+      category: 'functional',
+      errorMessage: options.errorMessage,
+      actualResult: options.errorMessage,
+      affectedUrl: options.affectedUrl || undefined,
+      userFlowImpact: 'blocking',
+    });
+
+    const [createdIssue] = await this.db.insert(issues).values({
+      runId: options.runId,
+      testResultId: options.testResultId || null,
+      browserSessionId: options.browserSessionId || null,
+      title: options.root.title,
+      description: options.root.likelyCause,
+      severity: classification.severity,
+      severityReason: classification.reason,
+      category: 'functional',
+      status: 'open',
+      reproductionSteps: options.reproductionSteps || ['Execute the QA run using the configured target URL'],
+      expectedResult: options.expectedResult || 'QA execution uses one valid canonical target URL',
+      actualResult: options.errorMessage,
+      screenshotEvidence: options.screenshotRef ? [options.screenshotRef] : [],
+      affectedUrl: options.affectedUrl || null,
+      rootCauseAnalysis,
+    }).returning();
+
+    broadcastRunEvent(options.runId, 'issue_created', {
+      runId: options.runId,
+      issueId: createdIssue?.id,
+      title: options.root.title,
+      rootCauseKey: options.root.key,
+    });
+
+    return createdIssue;
+  }
+
   public async executeRun(runId: string): Promise<void> {
-    // 1. Validate run state (concurrency check)
     const runRecord = await this.db.select().from(runs).where(eq(runs.id, runId)).limit(1);
     if (runRecord.length === 0) {
       throw new AppError('NOT_FOUND', `Run ${runId} not found`, 404);
     }
     const run = runRecord[0];
-    
+
     if (run.status === 'running' || run.status === 'passed' || run.status === 'failed' || run.status === 'stopped') {
       throw new AppError('CONFLICT', `Run ${runId} is already in state ${run.status}`, 409);
     }
 
-    // Mark as running
     await this.db.update(runs).set({ status: 'running' }).where(eq(runs.id, runId));
     broadcastRunEvent(runId, 'run_started', { runId, status: 'running' });
 
-    const cases = await this.db.select().from(testCases).where(eq(testCases.runId, runId));
-    let runStatus: 'passed' | 'failed' | 'error' | 'stopped' = 'passed';
+    let cases: any[] = [];
+    let runStatus: 'passed' | 'failed' | 'error' | 'stopped' = 'error';
+    let effectiveTargetUrl: string | undefined;
+    let session: any;
+    let passedCount = 0;
+    let failedCount = 0;
 
-    let session;
     try {
-      // Create session with DB tracking
+      cases = await this.db.select().from(testCases).where(eq(testCases.runId, runId));
+      runStatus = 'passed';
+
+      try {
+        effectiveTargetUrl = await this.resolveRunTargetUrl(run, cases);
+      } catch (error: any) {
+        runStatus = 'error';
+        const message = error?.message || 'Target URL is missing or malformed';
+        const root = deriveExecutionRootCause(message);
+
+        if (cases.length === 0) {
+          await this.upsertRootIssue({ runId, root, errorMessage: message, affectedUrl: null });
+        } else {
+          // The same propagation fault may block many tests. Preserve each test
+          // result for accurate run/report counts, but keep one shared root issue.
+          for (const tCase of cases) {
+            const [blockedResult] = await this.db.insert(testResults).values({
+              runId,
+              testCaseId: tCase.id,
+              name: tCase.name,
+              status: 'error',
+              durationMs: 0,
+              summary: message,
+              errorMessage: message,
+              assertions: [],
+            }).returning();
+            failedCount += 1;
+            await this.upsertRootIssue({
+              runId,
+              root,
+              errorMessage: message,
+              testResultId: blockedResult?.id || null,
+              testName: tCase.name,
+              affectedUrl: null,
+              reproductionSteps: [`Resolve the configured target URL before executing ${tCase.name}`],
+            });
+            broadcastRunEvent(runId, 'test_completed', {
+              runId,
+              testCaseId: tCase.id,
+              name: tCase.name,
+              status: 'error',
+              errorMessage: message,
+              durationMs: 0,
+            });
+          }
+        }
+        return;
+      }
+
+      if (cases.length === 0) return;
+
       session = await this.browserManager.createSession(runId, this.db);
 
       for (const tCase of cases) {
-        // Check cancellation
         if (this.activeCancelledRuns.has(runId)) {
           runStatus = 'stopped';
           break;
@@ -70,7 +275,7 @@ export class ExecutionService {
         let testStatus: 'passed' | 'failed' | 'error' | 'stopped' = 'passed';
         let errorMessage: string | undefined;
         let screenshotRef: string | undefined;
-        let assertionResults: any[] = [];
+        const assertionResults: any[] = [];
         const startTime = Date.now();
 
         broadcastRunEvent(runId, 'test_started', { runId, testCaseId: tCase.id, name: tCase.name });
@@ -81,7 +286,6 @@ export class ExecutionService {
 
           await session.navigate({ url: 'about:blank' });
 
-          // Execute Actions
           for (const step of steps) {
             if (this.activeCancelledRuns.has(runId)) {
               testStatus = 'stopped';
@@ -92,7 +296,7 @@ export class ExecutionService {
 
             switch (step.action) {
               case 'navigate':
-                if (step.target) await session.navigate({ url: step.target });
+                await session.navigate({ url: resolveNavigationUrl(step.target, effectiveTargetUrl) });
                 break;
               case 'click':
                 if (step.target) await session.click({ selector: step.target });
@@ -114,147 +318,105 @@ export class ExecutionService {
             }
           }
 
-          // Evaluate Visual QA layout checks
-          const visualDefects = await session.evaluateVisualQA();
-          if (visualDefects.length > 0) {
-            for (const defect of visualDefects) {
-              try {
-                const title = `Visual Defect: ${defect.title}`;
-                const description = `${defect.description}${defect.selector ? ` Selector: ${defect.selector}` : ''}`;
-                const classification = this.severityClassifier.classify({
-                  title,
-                  description,
-                  category: 'visual',
-                  userFlowImpact: defect.severity === 'high' ? 'degraded' : 'minor',
-                  actualResult: defect.description,
-                });
-
-                await this.db.insert(issues).values({
+          if (testStatus !== 'stopped') {
+            const visualDefects = await session.evaluateVisualQA();
+            if (visualDefects.length > 0) {
+              for (const defect of visualDefects) {
+                const message = defect.description || defect.title;
+                const root = deriveExecutionRootCause(`Visual layout failure: ${message}`);
+                await this.upsertRootIssue({
                   runId,
+                  root: { ...root, title: `Visual Defect: ${defect.title}`, affectedArea: 'Visual layout' },
+                  errorMessage: message,
                   browserSessionId: session.sessionId,
-                  title,
-                  description,
-                  severity: classification.severity,
-                  severityReason: classification.reason,
-                  category: 'visual',
-                  status: 'open',
-                  reproductionSteps: [`Navigate to target page`, `Inspect visual layout of element: ${defect.selector || 'page'}`],
+                  affectedUrl: effectiveTargetUrl,
+                  reproductionSteps: [`Navigate to ${effectiveTargetUrl}`, `Inspect visual layout of element: ${defect.selector || 'page'}`],
                   expectedResult: 'Element renders correctly without layout defects',
-                  actualResult: defect.description,
-                  screenshotEvidence: screenshotRef ? [screenshotRef] : [],
                 });
-                broadcastRunEvent(runId, 'issue_created', { runId, title: defect.title, category: 'visual' });
-              } catch (err) {}
+              }
+            }
+
+            for (const assertion of assertions) {
+              if (this.activeCancelledRuns.has(runId)) {
+                testStatus = 'stopped';
+                break;
+              }
+
+              const result = await session.evaluateAssertion(assertion.type, assertion.target, assertion.expected);
+              assertionResults.push({ ...assertion, ...result });
+
+              if (!result.pass) {
+                testStatus = 'failed';
+                errorMessage = `Assertion failed: ${assertion.type} - actual: ${result.actual}`;
+
+                try {
+                  const snap = await session.screenshot({ fullPage: true });
+                  if (snap.storageRef && (await fs.stat(snap.storageRef).catch(() => null))) {
+                    const imageBuffer = await fs.readFile(snap.storageRef);
+                    const evidenceMeta = await this.evidenceService.storeEvidence({
+                      filename: `screenshot_${tCase.id}.png`,
+                      contentType: 'image/png',
+                      content: imageBuffer,
+                      runId,
+                      testCaseId: tCase.id,
+                    });
+                    screenshotRef = evidenceMeta.id;
+                  }
+                } catch {}
+                break;
+              }
             }
           }
-
-          // Evaluate Assertions
-          for (const assertion of assertions) {
-            if (this.activeCancelledRuns.has(runId)) {
-              testStatus = 'stopped';
-              break;
-            }
-
-            const result = await session.evaluateAssertion(assertion.type, assertion.target, assertion.expected);
-            assertionResults.push({ ...assertion, ...result });
-            
-            if (!result.pass) {
-              testStatus = 'failed';
-              errorMessage = `Assertion failed: ${assertion.type} - actual: ${result.actual}`;
-              
-              // Capture failure screenshot and store in EvidenceService
-              try {
-                const snap = await session.screenshot({ fullPage: true });
-                if (snap.storageRef && (await fs.stat(snap.storageRef).catch(() => null))) {
-                  const imageBuffer = await fs.readFile(snap.storageRef);
-                  const evidenceMeta = await this.evidenceService.storeEvidence({
-                    filename: `screenshot_${tCase.id}.png`,
-                    contentType: 'image/png',
-                    content: imageBuffer,
-                    runId,
-                    testCaseId: tCase.id,
-                  });
-                  screenshotRef = evidenceMeta.id;
-                }
-              } catch (e) {}
-              break;
-            }
-          }
-
         } catch (err: any) {
-           if (err.name === 'AppError' && (err.code === 'NAVIGATION_BLOCKED' || err.code === 'ACTION_FAILED')) {
-              testStatus = 'error';
-           } else {
-              testStatus = 'error';
-           }
-           errorMessage = err.message;
+          testStatus = 'error';
+          errorMessage = err?.message || 'Unknown execution error';
         }
 
         const durationMs = Date.now() - startTime;
-
-        // Persist test result
         const [insertedResult] = await this.db.insert(testResults).values({
           runId,
           testCaseId: tCase.id,
           name: tCase.name,
           status: testStatus,
           durationMs,
-          summary: testStatus === 'passed' ? 'All assertions passed' : errorMessage,
+          summary: testStatus === 'passed' ? 'All assertions passed' : errorMessage || `Test ${testStatus}`,
           errorMessage,
           screenshotRef,
           assertions: assertionResults,
         }).returning();
 
-        // Save screenshot as evidence record in DB if created
+        let rootIssue: any = null;
+        if ((testStatus === 'failed' || testStatus === 'error') && errorMessage) {
+          const rawSteps = tCase.steps as unknown as TestStep[];
+          const reproSteps = Array.isArray(rawSteps)
+            ? rawSteps.map(s => `${s.action} ${s.action === 'navigate' ? resolveNavigationUrl(s.target, effectiveTargetUrl!) : (s.target || '')} ${s.value || ''}`.trim())
+            : [`Execute test case ${tCase.name}`];
+
+          rootIssue = await this.upsertRootIssue({
+            runId,
+            root: deriveExecutionRootCause(errorMessage),
+            errorMessage,
+            testResultId: insertedResult?.id || null,
+            testName: tCase.name,
+            browserSessionId: session?.sessionId || null,
+            affectedUrl: effectiveTargetUrl,
+            screenshotRef,
+            reproductionSteps: reproSteps,
+            expectedResult: tCase.assertions ? JSON.stringify(tCase.assertions) : 'All test assertions pass',
+          });
+        }
+
         if (screenshotRef) {
           try {
             await this.db.insert(evidence).values({
               runId,
               testResultId: insertedResult?.id || null,
+              issueId: rootIssue?.id || null,
               type: 'screenshot',
               storageRef: screenshotRef,
               description: `Failure screenshot for test ${tCase.name}`,
             });
-          } catch (e) {}
-        }
-
-        // Auto-create Issue for failed/error test result
-        if (testStatus === 'failed' || testStatus === 'error') {
-          try {
-            const rawSteps = tCase.steps as unknown as TestStep[];
-            const reproSteps = Array.isArray(rawSteps)
-              ? rawSteps.map(s => `${s.action} ${s.target || ''} ${s.value || ''}`.trim())
-              : [`Execute test case ${tCase.name}`];
-
-            const title = `${testStatus === 'error' ? 'Execution Error' : 'Test Failed'}: ${tCase.name}`;
-            const description = errorMessage || `Test ${tCase.name} encountered an issue during execution.`;
-            const classification = this.severityClassifier.classify({
-              title,
-              description,
-              category: 'functional',
-              errorMessage,
-              actualResult: errorMessage || `${testStatus === 'error' ? 'Execution error' : 'Assertion failed'}`,
-              userFlowImpact: testStatus === 'error' ? 'blocking' : 'blocking',
-            });
-
-            const [createdIssue] = await this.db.insert(issues).values({
-              runId,
-              testResultId: insertedResult?.id || null,
-              browserSessionId: session ? session.sessionId : null,
-              title,
-              description,
-              severity: classification.severity,
-              severityReason: classification.reason,
-              category: 'functional',
-              status: 'open',
-              reproductionSteps: reproSteps,
-              expectedResult: tCase.assertions ? JSON.stringify(tCase.assertions) : 'All test assertions pass',
-              actualResult: errorMessage || `${testStatus === 'error' ? 'Execution error' : 'Assertion failed'}`,
-              screenshotEvidence: screenshotRef ? [screenshotRef] : [],
-            }).returning();
-
-            broadcastRunEvent(runId, 'issue_created', { runId, issueId: createdIssue?.id, title: tCase.name });
-          } catch (e) {}
+          } catch {}
         }
 
         broadcastRunEvent(runId, 'test_completed', {
@@ -266,18 +428,31 @@ export class ExecutionService {
           durationMs,
         });
 
-        // Update run aggregation
-        if (testStatus === 'failed' && runStatus !== 'error' && (runStatus as any) !== 'stopped') {
+        if (testStatus === 'passed') passedCount += 1;
+        if (testStatus === 'failed' || testStatus === 'error') failedCount += 1;
+
+        if (testStatus === 'failed' && runStatus !== 'error' && runStatus !== 'stopped') {
           runStatus = 'failed';
-        } else if (testStatus === 'error' && (runStatus as any) !== 'stopped') {
+        } else if (testStatus === 'error' && runStatus !== 'stopped') {
           runStatus = 'error';
+        } else if (testStatus === 'stopped') {
+          runStatus = 'stopped';
         }
       }
     } catch (err: any) {
-      if ((runStatus as any) !== 'stopped') runStatus = 'error';
+      if (runStatus !== 'stopped') runStatus = 'error';
+      const message = err?.message || 'Unexpected QA execution failure';
+      try {
+        await this.upsertRootIssue({
+          runId,
+          root: deriveExecutionRootCause(message),
+          errorMessage: message,
+          browserSessionId: session?.sessionId || null,
+          affectedUrl: effectiveTargetUrl || null,
+        });
+      } catch {}
     } finally {
       if (session) {
-        // Save console and network logs to evidence before closing session
         try {
           const logs = session.getLogs();
           if (logs.console.length > 0) {
@@ -309,20 +484,59 @@ export class ExecutionService {
               description: 'Network activity captured during execution',
             });
           }
-        } catch (e) {}
+        } catch {}
 
-        await this.browserManager.closeSession(session.sessionId, this.db);
+        try {
+          await this.browserManager.closeSession(session.sessionId, this.db);
+        } catch {}
       }
-      
-      const finalStatus = this.activeCancelledRuns.has(runId) ? 'stopped' : runStatus;
-      if (cases.length === 0 && !this.activeCancelledRuns.has(runId)) runStatus = 'passed';
-      
+
+      const finalStatus: 'passed' | 'failed' | 'error' | 'stopped' = this.activeCancelledRuns.has(runId)
+        ? 'stopped'
+        : runStatus;
+      const completedAt = new Date();
+
       await this.db.update(runs).set({
         status: finalStatus,
-        completedAt: new Date()
+        completedAt,
       }).where(eq(runs.id, runId));
 
-      broadcastRunEvent(runId, 'run_completed', { runId, status: finalStatus });
+      if (run.taskId) {
+        await this.db.update(tasks).set({
+          status: finalStatus === 'passed' ? 'completed' : 'failed',
+          updatedAt: completedAt,
+        }).where(eq(tasks.id, run.taskId));
+      }
+
+      try {
+        const reportMeta = await this.evidenceService.storeEvidence({
+          filename: `run_report_${runId}.json`,
+          contentType: 'application/json',
+          content: JSON.stringify({
+            runId,
+            targetUrl: effectiveTargetUrl || null,
+            status: finalStatus,
+            passedTests: passedCount,
+            failedTests: failedCount,
+            completedAt: completedAt.toISOString(),
+          }, null, 2),
+          runId,
+        });
+        await this.db.insert(evidence).values({
+          runId,
+          type: 'run_report',
+          storageRef: reportMeta.id,
+          description: 'Final QA execution report generated from run state',
+        });
+      } catch {}
+
+      broadcastRunEvent(runId, 'run_completed', {
+        runId,
+        status: finalStatus,
+        targetUrl: effectiveTargetUrl || null,
+        passedTests: passedCount,
+        failedTests: failedCount,
+      });
       this.activeCancelledRuns.delete(runId);
     }
   }

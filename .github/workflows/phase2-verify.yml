@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/phase-2-bug-intelligence-auto-fix
+      - fix/core-qa-reliability
   pull_request:
     branches:
       - main

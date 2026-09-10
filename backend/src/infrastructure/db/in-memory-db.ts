@@ -127,7 +127,16 @@ export function createInMemoryDb() {
     if (!item || !withConfig) return item;
     const clone = { ...item };
 
+    if (tableKey === 'tasks' && withConfig.project) {
+      clone.project = store.projects.find(project => project.id === item.projectId) || null;
+    }
+
     if (tableKey === 'runs') {
+      if (withConfig.task) {
+        const task = store.tasks.find(candidate => candidate.id === item.taskId) || null;
+        const nestedWith = typeof withConfig.task === 'object' ? withConfig.task.with : undefined;
+        clone.task = task ? populateWithRelations(task, 'tasks', nestedWith || {}) : null;
+      }
       if (withConfig.testResults) {
         clone.testResults = store.test_results.filter(tr => tr.runId === item.id);
       }
