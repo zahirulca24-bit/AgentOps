@@ -7,7 +7,7 @@ import { usePathname, useRouter } from '@/lib/router';
 
 type Message = { id: string; role: 'user' | 'agent'; text: string; result?: ApiCommandChatResult };
 
-type ExtendedCommandChatResult = ApiCommandChatResult & {
+type ExtendedCommandChatResult = Omit<ApiCommandChatResult, 'intent' | 'status'> & {
   intent: ApiCommandChatResult['intent'] | 'browser_worker_create';
   status: ApiCommandChatResult['status'] | 'executed' | 'needs_input';
   missingFields?: string[];
