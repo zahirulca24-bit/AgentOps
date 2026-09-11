@@ -19,7 +19,7 @@ export function RecentCommandsList({
         <div className="flex items-center gap-2">
           <History className="w-4 h-4 text-primary" />
           <CardTitle className="text-sm font-semibold text-foreground">
-            Recent QA Commands &amp; Presets
+            Website Tester Presets
           </CardTitle>
         </div>
         <span className="text-[11px] font-mono text-muted-foreground">

@@ -108,9 +108,9 @@ export default function CommandCenterPage() {
 
       <details className="group rounded-xl border border-border bg-surface">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 text-sm font-semibold text-foreground marker:content-none">
-          Advanced manual QA controls
-          <span className="text-xs font-normal text-muted-foreground group-open:hidden">Open dispatcher</span>
-          <span className="hidden text-xs font-normal text-muted-foreground group-open:inline">Hide dispatcher</span>
+          Website Tester
+          <span className="text-xs font-normal text-muted-foreground group-open:hidden">Open tester</span>
+          <span className="hidden text-xs font-normal text-muted-foreground group-open:inline">Hide tester</span>
         </summary>
         <div className="border-t border-border p-4 sm:p-6">
           <CommandHeader onReset={handleResetForm} hasInput={hasAnyInput} />

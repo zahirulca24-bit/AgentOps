@@ -80,10 +80,45 @@ Do not generate arbitrary executable code. Do not hallucinate URLs.`;
     if (schemaProperties.intent && schemaProperties.summary) {
       const command = context.taskCommand.toLowerCase();
       const intent = command.includes('deploy') || command.includes('vercel') || command.includes('render') ? 'deploy'
+        : command.includes('browser worker') || command.includes('recurring') ? 'browser_worker_create'
         : command.includes('github') || command.includes('pull request') || command.includes('branch') ? 'github'
         : command.includes('issue') || command.includes('bug') ? 'issues'
         : command.includes('report') ? 'reports'
         : command.includes('run') || command.includes('status') ? 'runs' : 'qa';
+        
+      if (intent === 'browser_worker_create') {
+        // Simple regex extraction for fallback
+        const nameMatch = context.taskCommand.match(/named ["']([^"']+)["']/i);
+        const urlMatch = context.taskCommand.match(/target URL is ["']([^"']+)["']/i);
+        const envMatch = context.taskCommand.match(/environment ["']([^"']+)["']/i);
+        const scheduleMatch = context.taskCommand.match(/Schedule it as ["']([^"']+)["']/i);
+        const credMatch = context.taskCommand.match(/secret_ref ["']([^"']+)["']/i);
+        
+        return { 
+          intent, 
+          summary: `Command classified as browser_worker_create in fallback mode.`,
+          browserWorker: {
+            name: nameMatch ? nameMatch[1] : 'Fallback Browser Worker',
+            environment: envMatch ? envMatch[1] : 'test',
+            targetUrl: urlMatch ? urlMatch[1] : 'https://example.com',
+            scheduleType: scheduleMatch ? scheduleMatch[1] : 'on_demand',
+            credentialSecretRef: credMatch ? credMatch[1] : null,
+            loginConfig: credMatch ? {
+              loginUrl: urlMatch ? urlMatch[1] : 'https://example.com',
+              usernameSelector: '#username',
+              passwordSelector: '#password',
+              submitSelector: 'button[type="submit"]',
+              logoutSelector: 'a[href="/logout"]'
+            } : null,
+            checks: [
+              { type: 'login' },
+              { type: 'navigate', url: 'https://the-internet.herokuapp.com/secure' },
+              { type: 'wait', timeoutMs: 1000 },
+              { type: 'logout', selector: 'a.button.secondary[href="/logout"]' }
+            ]
+          }
+        } as T;
+      }
       return { intent, summary: `Command classified as ${intent} in fallback mode.` } as T;
     }
 
