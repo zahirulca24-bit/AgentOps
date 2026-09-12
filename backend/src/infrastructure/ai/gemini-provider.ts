@@ -80,10 +80,57 @@ Do not generate arbitrary executable code. Do not hallucinate URLs.`;
     if (schemaProperties.intent && schemaProperties.summary) {
       const command = context.taskCommand.toLowerCase();
       const intent = command.includes('deploy') || command.includes('vercel') || command.includes('render') ? 'deploy'
+        : command.includes('browser worker') || command.includes('recurring') ? 'browser_worker_create'
         : command.includes('github') || command.includes('pull request') || command.includes('branch') ? 'github'
         : command.includes('issue') || command.includes('bug') ? 'issues'
         : command.includes('report') ? 'reports'
         : command.includes('run') || command.includes('status') ? 'runs' : 'qa';
+        
+      if (intent === 'browser_worker_create') {
+        // Deterministic fallback must only extract values explicitly present in the command.
+        // Never invent URLs, selectors, credentials, or workflow steps.
+        const rawCommand = context.taskCommand;
+        const nameMatch = rawCommand.match(/named\s+["']([^"']+)["']/i);
+        const explicitUrlMatch = rawCommand.match(/(?:target\s+url(?:\s+is)?|url)\s*[:=]?\s*["']?(https?:\/\/[^\s"']+)/i);
+        const anyUrlMatch = rawCommand.match(/https?:\/\/[^\s"']+/i);
+        const envMatch = rawCommand.match(/environment\s+["']?([a-z0-9_-]+)["']?/i);
+        const credMatch = rawCommand.match(/secret_ref\s*[:=]?\s*["']([^"']+)["']/i);
+        const usernameSelectorMatch = rawCommand.match(/username\s+selector\s*[:=]?\s*["']([^"']+)["']/i);
+        const passwordSelectorMatch = rawCommand.match(/password\s+selector\s*[:=]?\s*["']([^"']+)["']/i);
+        const submitSelectorMatch = rawCommand.match(/submit\s+selector\s*[:=]?\s*["']([^"']+)["']/i);
+        const logoutSelectorMatch = rawCommand.match(/logout\s+selector\s*[:=]?\s*["']([^"']+)["']/i);
+        const loginUrlMatch = rawCommand.match(/login\s+url\s*[:=]?\s*["']?(https?:\/\/[^\s"']+)/i);
+
+        const targetUrl = explicitUrlMatch?.[1] || anyUrlMatch?.[0];
+        const scheduleType = /\bhourly\b/i.test(rawCommand) ? 'hourly'
+          : /\bdaily\b/i.test(rawCommand) ? 'daily'
+          : /\bweekly\b/i.test(rawCommand) ? 'weekly'
+          : /\bon[_ -]?demand\b/i.test(rawCommand) ? 'on_demand'
+          : undefined;
+
+        const hasLoginConfig = Boolean(
+          loginUrlMatch || usernameSelectorMatch || passwordSelectorMatch || submitSelectorMatch || logoutSelectorMatch
+        );
+
+        return {
+          intent,
+          summary: 'Command classified as browser_worker_create in fallback mode.',
+          browserWorker: {
+            name: nameMatch?.[1],
+            environment: envMatch?.[1],
+            targetUrl,
+            scheduleType,
+            credentialSecretRef: credMatch?.[1],
+            loginConfig: hasLoginConfig ? {
+              loginUrl: loginUrlMatch?.[1],
+              usernameSelector: usernameSelectorMatch?.[1],
+              passwordSelector: passwordSelectorMatch?.[1],
+              submitSelector: submitSelectorMatch?.[1],
+              logoutSelector: logoutSelectorMatch?.[1],
+            } : undefined,
+          },
+        } as T;
+      }
       return { intent, summary: `Command classified as ${intent} in fallback mode.` } as T;
     }
 
