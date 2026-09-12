@@ -87,36 +87,48 @@ Do not generate arbitrary executable code. Do not hallucinate URLs.`;
         : command.includes('run') || command.includes('status') ? 'runs' : 'qa';
         
       if (intent === 'browser_worker_create') {
-        // Simple regex extraction for fallback
-        const nameMatch = context.taskCommand.match(/named ["']([^"']+)["']/i);
-        const urlMatch = context.taskCommand.match(/target URL is ["']([^"']+)["']/i);
-        const envMatch = context.taskCommand.match(/environment ["']([^"']+)["']/i);
-        const scheduleMatch = context.taskCommand.match(/Schedule it as ["']([^"']+)["']/i);
-        const credMatch = context.taskCommand.match(/secret_ref ["']([^"']+)["']/i);
-        
-        return { 
-          intent, 
-          summary: `Command classified as browser_worker_create in fallback mode.`,
+        // Deterministic fallback must only extract values explicitly present in the command.
+        // Never invent URLs, selectors, credentials, or workflow steps.
+        const rawCommand = context.taskCommand;
+        const nameMatch = rawCommand.match(/named\s+["']([^"']+)["']/i);
+        const explicitUrlMatch = rawCommand.match(/(?:target\s+url(?:\s+is)?|url)\s*[:=]?\s*["']?(https?:\/\/[^\s"']+)/i);
+        const anyUrlMatch = rawCommand.match(/https?:\/\/[^\s"']+/i);
+        const envMatch = rawCommand.match(/environment\s+["']?([a-z0-9_-]+)["']?/i);
+        const credMatch = rawCommand.match(/secret_ref\s*[:=]?\s*["']([^"']+)["']/i);
+        const usernameSelectorMatch = rawCommand.match(/username\s+selector\s*[:=]?\s*["']([^"']+)["']/i);
+        const passwordSelectorMatch = rawCommand.match(/password\s+selector\s*[:=]?\s*["']([^"']+)["']/i);
+        const submitSelectorMatch = rawCommand.match(/submit\s+selector\s*[:=]?\s*["']([^"']+)["']/i);
+        const logoutSelectorMatch = rawCommand.match(/logout\s+selector\s*[:=]?\s*["']([^"']+)["']/i);
+        const loginUrlMatch = rawCommand.match(/login\s+url\s*[:=]?\s*["']?(https?:\/\/[^\s"']+)/i);
+
+        const targetUrl = explicitUrlMatch?.[1] || anyUrlMatch?.[0];
+        const scheduleType = /\bhourly\b/i.test(rawCommand) ? 'hourly'
+          : /\bdaily\b/i.test(rawCommand) ? 'daily'
+          : /\bweekly\b/i.test(rawCommand) ? 'weekly'
+          : /\bon[_ -]?demand\b/i.test(rawCommand) ? 'on_demand'
+          : undefined;
+
+        const hasLoginConfig = Boolean(
+          loginUrlMatch || usernameSelectorMatch || passwordSelectorMatch || submitSelectorMatch || logoutSelectorMatch
+        );
+
+        return {
+          intent,
+          summary: 'Command classified as browser_worker_create in fallback mode.',
           browserWorker: {
-            name: nameMatch ? nameMatch[1] : 'Fallback Browser Worker',
-            environment: envMatch ? envMatch[1] : 'test',
-            targetUrl: urlMatch ? urlMatch[1] : 'https://example.com',
-            scheduleType: scheduleMatch ? scheduleMatch[1] : 'on_demand',
-            credentialSecretRef: credMatch ? credMatch[1] : null,
-            loginConfig: credMatch ? {
-              loginUrl: urlMatch ? urlMatch[1] : 'https://example.com',
-              usernameSelector: '#username',
-              passwordSelector: '#password',
-              submitSelector: 'button[type="submit"]',
-              logoutSelector: 'a[href="/logout"]'
-            } : null,
-            checks: [
-              { type: 'login' },
-              { type: 'navigate', url: 'https://the-internet.herokuapp.com/secure' },
-              { type: 'wait', timeoutMs: 1000 },
-              { type: 'logout', selector: 'a.button.secondary[href="/logout"]' }
-            ]
-          }
+            name: nameMatch?.[1],
+            environment: envMatch?.[1],
+            targetUrl,
+            scheduleType,
+            credentialSecretRef: credMatch?.[1],
+            loginConfig: hasLoginConfig ? {
+              loginUrl: loginUrlMatch?.[1],
+              usernameSelector: usernameSelectorMatch?.[1],
+              passwordSelector: passwordSelectorMatch?.[1],
+              submitSelector: submitSelectorMatch?.[1],
+              logoutSelector: logoutSelectorMatch?.[1],
+            } : undefined,
+          },
         } as T;
       }
       return { intent, summary: `Command classified as ${intent} in fallback mode.` } as T;
