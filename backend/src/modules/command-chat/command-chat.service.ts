@@ -185,12 +185,19 @@ export class CommandChatService {
 
     progress.push('Creating QA run directly from chat');
 
-    // Create a generic task for the run
-    let projectId = '00000000-0000-0000-0000-000000000000'; // Default or find
+    // Reuse the project for this exact target URL, otherwise create one.
+    // Never attach a QA run to an unrelated project or a synthetic UUID.
     const allProjects = await this.db.select().from(projects);
     const match = allProjects.find((p: any) => normalizeUrlForMatch(p.targetUrl) === targetUrl);
-    if (match) projectId = match.id;
-    else if (allProjects.length > 0) projectId = allProjects[0].id;
+    let projectId = match?.id;
+    if (!projectId) {
+      const hostname = new URL(targetUrl).hostname;
+      const [createdProject] = await this.db.insert(projects).values({
+        name: `QA ${hostname}`,
+        targetUrl,
+      }).returning();
+      projectId = createdProject.id;
+    }
 
     const [taskRecord] = await this.db.insert(tasks).values({
       projectId,
@@ -213,7 +220,11 @@ export class CommandChatService {
     // Check if checks were passed in from QA details
     let planSteps = plan.steps;
     if (qaDetails.checks && qaDetails.checks.length > 0) {
-      planSteps = qaDetails.checks.map(c => ({ title: c }));
+      planSteps = qaDetails.checks.map((check) => ({
+        type: 'test' as const,
+        title: check,
+        description: `User-requested Website Tester check: ${check}`,
+      }));
     }
 
     const generatedTests = await generator.generateTests({
