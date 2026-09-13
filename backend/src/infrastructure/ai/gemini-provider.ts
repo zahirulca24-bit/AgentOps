@@ -131,6 +131,37 @@ Do not generate arbitrary executable code. Do not hallucinate URLs.`;
           },
         } as T;
       }
+      if (intent === 'qa') {
+        const rawCommand = context.taskCommand;
+        const urlMatch = rawCommand.match(/https?:\/\/[^\s"'<>]+/i);
+        const explicitChecks = [
+          /\bfunctional\b/i.test(rawCommand) ? 'functional' : null,
+          /\bvisual\b/i.test(rawCommand) ? 'visual' : null,
+          /\bconsole\b/i.test(rawCommand) ? 'console' : null,
+          /\bnetwork\b/i.test(rawCommand) ? 'network' : null,
+          /\bregression\b/i.test(rawCommand) ? 'regression' : null,
+          /\blogin\b/i.test(rawCommand) ? 'login' : null,
+          /\bscreenshot(?:s)?\b/i.test(rawCommand) ? 'screenshots' : null,
+          /\breport\b/i.test(rawCommand) ? 'report' : null,
+        ].filter((value): value is string => Boolean(value));
+        const preset = /\bfull(?:\s+test\s+suite)?\b/i.test(rawCommand) ? 'Full Test Suite'
+          : /\bregression\b/i.test(rawCommand) ? 'Regression'
+          : /\bvisual\b/i.test(rawCommand) ? 'Visual'
+          : /\bnetwork\b/i.test(rawCommand) ? 'Network'
+          : /\blogin\b/i.test(rawCommand) ? 'Login'
+          : undefined;
+
+        return {
+          intent,
+          summary: 'Command classified as qa in fallback mode.',
+          qaDetails: {
+            targetUrl: urlMatch?.[0],
+            preset,
+            checks: explicitChecks,
+          },
+        } as T;
+      }
+
       return { intent, summary: `Command classified as ${intent} in fallback mode.` } as T;
     }
 

@@ -5,6 +5,16 @@ import type { AIProvider } from '../../src/core/ai/provider.js';
 
 const ai = (result: any): AIProvider => ({ generateStructuredQA: async () => typeof result === 'string' ? ({ intent: result, summary: 'token=do-not-display' }) : result });
 
+vi.mock('../../src/modules/planner/planner.service.js', () => ({
+  PlannerService: class { generatePlan = async () => ({ steps: [] }) }
+}));
+vi.mock('../../src/modules/generator/generator.service.js', () => ({
+  TestGeneratorService: class { generateTests = async () => ([]) }
+}));
+vi.mock('../../src/modules/execution/execution.service.js', () => ({
+  ExecutionService: class { executeRun = async () => {} }
+}));
+
 describe('CommandChatService', () => {
   it('expires historical specialist activity instead of presenting it as live work', () => {
     const now = Date.now();
@@ -12,12 +22,33 @@ describe('CommandChatService', () => {
     expect(isAgentActive(new Date(now - AGENT_ACTIVITY_WINDOW_MS - 1), now)).toBe(false);
   });
 
-  it('routes QA requests through the QA command workspace with policy evaluation', async () => {
+  it('asks only for unresolved targetUrl for QA requests', async () => {
     const result = await new CommandChatService(ai('qa')).dispatch('Test the checkout flow', { page: '/runs', runId: 'run-1' });
     expect(result.destination).toBe('/command');
     expect(result.specialist).toBe('QA');
     expect(result.permission.action).toBe('trigger_qa_run');
-    expect(result.status).toBe('ready');
+    expect(result.status).toBe('needs_input');
+    expect((result as any).missingFields).toEqual(['qaDetails.targetUrl']);
+  });
+
+  it('creates and executes QA run directly from chat when targetUrl is provided', async () => {
+    const mockDb = {
+      select: () => ({ from: () => [] }),
+      insert: vi.fn(() => ({ values: () => ({ returning: () => [{ id: 'mock-id' }] }) }))
+    };
+    
+    // Create mock config, browserManager, generatorService for DI or rely on the actual modules via DB injection
+    // Wait, since we are dynamically importing `execution.service.ts` etc inside `createAndExecuteQaRunFromChat`, 
+    // it's easier to just mock those modules if they are called, or pass mock versions.
+    // However, vitest can just mock the dynamic imports, or we provide a valid mock db.
+    const result = await new CommandChatService(
+      ai({ intent: 'qa', summary: 'Run qa', qaDetails: { targetUrl: 'https://app.example.com', checks: ['Login'] } }),
+      undefined, undefined, mockDb as any, undefined, {} as any, {} as any
+    ).dispatch('Run QA against https://app.example.com checking Login', { page: '/command' });
+    
+    expect(result.status).toBe('executed');
+    expect(result.destination).toBe('/command');
+    expect((result as any).runId).toBe('mock-id');
   });
 
   it('requires a human approval for production deploy instructions and redacts summaries', async () => {
