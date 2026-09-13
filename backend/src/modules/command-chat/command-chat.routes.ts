@@ -7,14 +7,17 @@ import { AppError } from '../../core/errors.js';
 import { CommandChatService } from './command-chat.service.js';
 import { ChiefOfStaffMemory } from './chief-of-staff.service.js';
 
+import type { BrowserManager } from '../../infrastructure/browser/browser.manager.js';
+import type { EnvConfig } from '../../config/env.js';
+
 const dispatchSchema = z.object({
   command: z.string().min(1).max(4000),
   context: z.object({ page: z.string().min(1), runId: z.string().optional() }),
   actor: z.string().min(1).optional(),
 });
 
-export async function commandChatRoutes(app: FastifyInstance, options: { aiProvider: AIProvider; db?: Database; browserWorkerService?: BrowserWorkerService }) {
-  const service = new CommandChatService(options.aiProvider, undefined, undefined, options.db, options.browserWorkerService);
+export async function commandChatRoutes(app: FastifyInstance, options: { aiProvider: AIProvider; db?: Database; browserWorkerService?: BrowserWorkerService; browserManager?: BrowserManager; config?: EnvConfig }) {
+  const service = new CommandChatService(options.aiProvider, undefined, undefined, options.db, options.browserWorkerService, options.browserManager, options.config);
   const memory = new ChiefOfStaffMemory(options.db);
   app.get('/api/v1/agents', async () => ({ data: await memory.overview() }));
   app.get('/api/v1/agents/communications', async () => ({ data: await memory.log() }));

@@ -39,12 +39,26 @@ type BrowserWorkerDraft = {
   }>;
 };
 
-type ParsedCommand = { intent: ChatIntent; summary: string; browserWorker?: BrowserWorkerDraft };
+type QaDraft = {
+  targetUrl?: string;
+  preset?: string;
+  checks?: string[];
+};
+
+type ParsedCommand = { intent: ChatIntent; summary: string; browserWorker?: BrowserWorkerDraft; qaDetails?: QaDraft };
 
 const schema = {
   type: 'object', properties: {
     intent: { type: 'string', enum: ['qa', 'runs', 'issues', 'reports', 'github', 'deploy', 'browser_worker_create'] },
     summary: { type: 'string' },
+    qaDetails: {
+      type: 'object',
+      properties: {
+        targetUrl: { type: 'string' },
+        preset: { type: 'string' },
+        checks: { type: 'array', items: { type: 'string' } }
+      }
+    },
     browserWorker: {
       type: 'object',
       properties: {
@@ -107,6 +121,8 @@ export class CommandChatService {
     private approvals = new HumanApprovalService(),
     private db?: Database,
     private browserWorkers?: Pick<BrowserWorkerService, 'createWorker'>,
+    private browserManager?: any,
+    private config?: any
   ) { this.memory = new ChiefOfStaffMemory(db); }
 
   async dispatch(command: string, context: { page: string; runId?: string }, actor = 'command-chat-user') {
@@ -116,7 +132,7 @@ export class CommandChatService {
     const parsed = await this.aiProvider.generateStructuredQA<ParsedCommand>({
       taskCommand: safeCommand,
       analysisContext: { page: context.page, runId: context.runId, retrievedMemory: memories },
-      promptOverride: `Classify this AgentOps command into qa, runs, issues, reports, github, deploy, or browser_worker_create. Use browser_worker_create for requests to create/set up/provision a browser worker or recurring browser check. For browser_worker_create, extract only values explicitly supplied by the user: existing project ID/name or app URL, worker name, environment, schedule (on_demand/hourly/daily/weekly), credential secret_ref, login selectors/config, and concrete browser checks as login/navigate/click/fill/submit/wait/logout steps. Do not invent selectors, credentials, project IDs, or URLs. Return only the requested JSON. Command: ${safeCommand}`,
+      promptOverride: `Classify this AgentOps command into qa, runs, issues, reports, github, deploy, or browser_worker_create. Use browser_worker_create for requests to create/set up/provision a browser worker or recurring browser check. For browser_worker_create, extract only values explicitly supplied by the user: existing project ID/name or app URL, worker name, environment, schedule (on_demand/hourly/daily/weekly), credential secret_ref, login selectors/config, and concrete browser checks as login/navigate/click/fill/submit/wait/logout steps. Do not invent selectors, credentials, project IDs, or URLs. For qa, extract the targetUrl and any explicitly requested preset or checks. Do not invent URLs. Return only the requested JSON. Command: ${safeCommand}`,
     }, schema);
     const intent = destinations[parsed.intent] ? parsed.intent : 'qa';
     const action = this.actionFor(intent, safeCommand);
@@ -139,8 +155,108 @@ export class CommandChatService {
     if (intent === 'browser_worker_create') {
       return this.createBrowserWorkerFromChat(parsed, specialist, permission, progress);
     }
+    
+    if (intent === 'qa') {
+      return this.createAndExecuteQaRunFromChat(parsed, specialist, permission, progress, safeCommand);
+    }
 
     const summary = redactString(parsed.summary); await this.memory.communicate('Chief of Staff', specialist, summary, specialist.toLowerCase().replaceAll(' ', '_')); await this.memory.remember('outcome', specialist, summary, { action, outcome: permission.outcome }); return { intent, specialist, summary, destination: destinations[intent], progress: [...progress, 'Action ready'], permission, status: 'ready' as const };
+  }
+
+  private async createAndExecuteQaRunFromChat(parsed: ParsedCommand, specialist: string, permission: any, progress: string[], command: string) {
+    const qaDetails = parsed.qaDetails || {};
+    const targetUrl = normalizeUrlForMatch(qaDetails.targetUrl);
+
+    if (!targetUrl) {
+      const summary = redactString('I can run Website Tester once you provide the target URL to test.');
+      await this.memory.communicate('Chief of Staff', specialist, summary, 'qa');
+      return { intent: 'qa' as const, specialist, summary, destination: destinations.qa, progress: [...progress, 'Waiting for required target URL'], permission, status: 'needs_input' as const, missingFields: ['qaDetails.targetUrl'] };
+    }
+
+    if (!this.db || !this.browserManager || !this.config) {
+      const summary = 'QA execution services are unavailable.';
+      return { intent: 'qa' as const, specialist, summary, destination: destinations.qa, progress: [...progress, 'Execution service unavailable'], permission, status: 'blocked' as const };
+    }
+
+    const { ExecutionService } = await import('../execution/execution.service.js');
+    const { TestGeneratorService } = await import('../generator/generator.service.js');
+    const { PlannerService } = await import('../planner/planner.service.js');
+    const { tasks, runs, testCases } = await import('../../infrastructure/db/schema.js');
+
+    progress.push('Creating QA run directly from chat');
+
+    // Create a generic task for the run
+    let projectId = '00000000-0000-0000-0000-000000000000'; // Default or find
+    const allProjects = await this.db.select().from(projects);
+    const match = allProjects.find((p: any) => normalizeUrlForMatch(p.targetUrl) === targetUrl);
+    if (match) projectId = match.id;
+    else if (allProjects.length > 0) projectId = allProjects[0].id;
+
+    const [taskRecord] = await this.db.insert(tasks).values({
+      projectId,
+      command,
+      targetUrl,
+      status: 'pending'
+    }).returning();
+
+    const [runRecord] = await this.db.insert(runs).values({
+      taskId: taskRecord.id,
+      status: 'pending'
+    }).returning();
+
+    const planner = new PlannerService(this.db, this.aiProvider);
+    const generator = new TestGeneratorService(this.db, this.aiProvider, this.config);
+    const execution = new ExecutionService(this.db, this.browserManager, this.config);
+
+    const plan = await planner.generatePlan(taskRecord.id);
+    
+    // Check if checks were passed in from QA details
+    let planSteps = plan.steps;
+    if (qaDetails.checks && qaDetails.checks.length > 0) {
+      planSteps = qaDetails.checks.map(c => ({ title: c }));
+    }
+
+    const generatedTests = await generator.generateTests({
+      runId: runRecord.id,
+      objective: command,
+      targetUrl,
+      planSteps,
+      explorationData: { flowCandidates: [], observations: {} }
+    });
+
+    if (generatedTests.length > 0) {
+      await this.db.insert(testCases).values(
+        generatedTests.map((tc: any) => ({
+          runId: runRecord.id,
+          name: tc.name,
+          category: tc.category,
+          priority: tc.priority,
+          preconditions: tc.preconditions,
+          steps: tc.steps,
+          assertions: tc.assertions
+        }))
+      );
+    }
+
+    // Fire-and-forget asynchronous execution
+    void execution.executeRun(runRecord.id).catch(() => undefined);
+
+    const summary = redactString(`QA run ${runRecord.id} created and started for ${targetUrl}.`);
+    await this.memory.communicate('Chief of Staff', specialist, summary, 'qa');
+    await this.memory.remember('outcome', specialist, summary, { action: 'trigger_qa_run', runId: runRecord.id, targetUrl });
+    
+    return {
+      intent: 'qa' as const,
+      specialist,
+      summary,
+      destination: destinations.qa,
+      progress: [...progress, 'QA run executing...'],
+      permission,
+      status: 'executed' as const,
+      runId: runRecord.id,
+      runStatus: 'running',
+      reportLink: `/runs/${runRecord.id}`
+    };
   }
 
   private async createBrowserWorkerFromChat(parsed: ParsedCommand, specialist: string, permission: any, progress: string[]) {
