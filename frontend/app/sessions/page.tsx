@@ -175,6 +175,76 @@ function WorkerList() {
   );
 }
 
+export function ProjectSelector({ projects, value, onChange, disabled }: { projects: BrowserWorkerProject[], value: string, onChange: (project: BrowserWorkerProject) => void, disabled: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newTarget, setNewTarget] = useState('');
+  const [createdProjects, setCreatedProjects] = useState<BrowserWorkerProject[]>([]);
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleOutside = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    if (open) document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [open]);
+
+  const availableProjects = [...projects, ...createdProjects.filter((created) => !projects.some((project) => project.id === created.id))];
+  const selected = availableProjects.find((p) => p.id === value);
+
+  const handleCreate = async () => {
+    if (!newName.trim()) return toast.error('Project name required');
+    setLoading(true);
+    try {
+      const res = await browserWorkersApi.createProject(newName.trim(), newTarget.trim() || undefined);
+      setCreatedProjects((current) => [...current.filter((project) => project.id !== res.data.id), res.data]);
+      onChange(res.data);
+      setCreating(false);
+      setOpen(false);
+      setNewName('');
+      setNewTarget('');
+      toast.success('Project created');
+    } catch (err) {
+      toast.error('Failed to create project', { description: err instanceof Error ? err.message : 'Unknown error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="relative" ref={ref}>
+      <button type="button" disabled={disabled} onClick={() => setOpen(!open)} className="flex h-10 w-full items-center justify-between rounded-md border border-border bg-surface px-3 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-50">
+        <span className="truncate">{selected ? selected.name : 'Select project'}</span>
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 z-50 mt-1 max-h-60 w-full overflow-auto rounded-md border border-border bg-surface p-1 shadow-md">
+          {availableProjects.length === 0 && !creating && <div className="px-2 py-3 text-center text-xs text-muted-foreground">No projects found</div>}
+          {!creating && availableProjects.map((p) => (
+            <button key={p.id} type="button" onClick={() => { onChange(p); setOpen(false); }} className="flex w-full flex-col items-start rounded-sm px-2 py-1.5 text-left text-sm hover:bg-surface-muted">
+              <span className="font-medium">{p.name}</span>
+              {p.targetUrl && <span className="text-xs text-muted-foreground">{p.targetUrl}</span>}
+            </button>
+          ))}
+          {!creating && (
+            <button type="button" onClick={() => setCreating(true)} className="mt-1 flex w-full items-center gap-2 rounded-sm border-t border-border px-2 py-2 text-left text-sm text-primary hover:bg-surface-muted">
+              <Plus className="h-4 w-4" /> Add new project/app
+            </button>
+          )}
+          {creating && (
+            <div className="space-y-3 p-2">
+              <div><label className="text-xs font-medium text-muted-foreground">Project Name</label><Input autoFocus value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. Acme Web App" className="mt-1 h-8" /></div>
+              <div><label className="text-xs font-medium text-muted-foreground">Target URL (optional)</label><Input value={newTarget} onChange={e => setNewTarget(e.target.value)} placeholder="https://..." className="mt-1 h-8" /></div>
+              <div className="flex gap-2"><Button size="sm" variant="outline" className="h-8 w-full" onClick={() => setCreating(false)}>Cancel</Button><Button size="sm" className="h-8 w-full" loading={loading} onClick={() => void handleCreate()}>Save</Button></div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function WorkerForm({ worker, projects, secrets, onCancel, onSaved }: {
   worker: BrowserWorker | null;
   projects: BrowserWorkerProject[];
@@ -250,7 +320,7 @@ function WorkerForm({ worker, projects, secrets, onCancel, onSaved }: {
       <CardContent className="p-5 space-y-5">
         <div className="flex items-center justify-between gap-4"><div><h2 className="font-semibold">{worker ? 'Edit Browser Worker' : 'New Browser Worker'}</h2><p className="text-xs text-muted-foreground mt-1">Configuration is persisted by the backend. No credentials are entered here.</p></div><Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button></div>
         <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Project / App"><select className="h-10 w-full rounded-md border border-border bg-surface px-3 text-sm" value={projectId} onChange={(e) => setProjectId(e.target.value)} disabled={Boolean(worker)}><option value="">Select project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></Field>
+          <Field label="Project / App"><ProjectSelector projects={projects} value={projectId} onChange={(project) => { setProjectId(project.id); if (project.targetUrl) setTargetUrl(project.targetUrl); }} disabled={Boolean(worker)} /></Field>
           <Field label="Test environment"><Input value={environment} onChange={(e) => setEnvironment(e.target.value)} placeholder="staging" /></Field>
           <Field label="Worker name"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Checkout Regression Worker" /></Field>
           <Field label="Target URL"><Input value={targetUrl} onChange={(e) => setTargetUrl(e.target.value)} placeholder="https://staging.example.com" /></Field>

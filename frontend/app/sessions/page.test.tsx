@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { formatWorkerDate, scheduleLabel } from '@/lib/browser-workers-api';
+import React from 'react';
+import { ProjectSelector } from './page';
 
 describe('Browser Workers UI helpers', () => {
   it('renders every supported schedule without fake worker state', () => {
@@ -13,5 +15,11 @@ describe('Browser Workers UI helpers', () => {
     expect(formatWorkerDate(null)).toBe('—');
     expect(formatWorkerDate(undefined)).toBe('—');
     expect(formatWorkerDate('not-a-date')).toBe('—');
+  });
+});
+
+describe('ProjectSelector', () => {
+  it('is a valid React component', () => {
+    expect(typeof ProjectSelector).toBe('function');
   });
 });

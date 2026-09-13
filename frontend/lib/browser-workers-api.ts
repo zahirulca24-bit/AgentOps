@@ -131,6 +131,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const browserWorkersApi = {
   baseUrl: API_BASE,
   listProjects: () => request<{ data: BrowserWorkerProject[] }>('/api/v1/projects'),
+  createProject: (name: string, targetUrl?: string) => request<{ data: BrowserWorkerProject }>('/api/v1/projects', {
+    method: 'POST', body: JSON.stringify({ name, targetUrl })
+  }),
   listWorkers: () => request<{ data: BrowserWorker[] }>('/api/v1/browser-workers'),
   getWorker: (id: string) => request<{ data: BrowserWorker }>(`/api/v1/browser-workers/${id}`),
   createWorker: (payload: CreateBrowserWorkerPayload) => request<{ data: BrowserWorker }>('/api/v1/browser-workers', {
