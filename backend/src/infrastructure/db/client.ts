@@ -1,6 +1,7 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import * as schema from './schema.js';
+import * as coreSchema from './schema.js';
+import * as browserWorkerSchema from '../../modules/browser-workers/browser-worker.schema.js';
 import type { EnvConfig } from '../../config/env.js';
 import { createInMemoryDb } from './in-memory-db.js';
 
@@ -12,6 +13,7 @@ export function createDbClient(config: EnvConfig) {
     connect_timeout: isTestEnv ? 1 : 2,
     max_lifetime: 5,
   });
+  const schema = { ...coreSchema, ...browserWorkerSchema };
   const realDb = drizzle(queryClient, { schema });
   const inMemoryDb = createInMemoryDb();
 
@@ -24,7 +26,6 @@ export function createDbClient(config: EnvConfig) {
     }
   }
 
-  // Fast background probe to detect if PostgreSQL is online
   queryClient`SELECT 1`.then(() => {
     useFallback = false;
   }).catch((err) => {
@@ -121,6 +122,7 @@ export function createDbClient(config: EnvConfig) {
 
   return {
     db: dbProxy as Database,
+    realDb,
     queryClient,
     async close() {
       try {
