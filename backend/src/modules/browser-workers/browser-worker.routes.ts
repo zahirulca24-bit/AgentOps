@@ -54,57 +54,83 @@ function parseId(request: FastifyRequest): string {
   return parsed.data.id;
 }
 
+function isBrowserWorkerSchemaError(error: any): boolean {
+  const code = String(error?.code || error?.cause?.code || '');
+  const message = String(error?.message || error?.cause?.message || '').toLowerCase();
+  return code === '42P01' || code === '42703' || (
+    (message.includes('browser_workers') || message.includes('browser_worker_runs') || message.includes('browser_worker_notifications')) &&
+    (message.includes('does not exist') || message.includes('undefined column'))
+  );
+}
+
+async function withBrowserWorkerStorage<T>(request: FastifyRequest, operation: string, action: () => Promise<T>): Promise<T> {
+  try {
+    return await action();
+  } catch (error: any) {
+    if (error instanceof AppError) throw error;
+    if (isBrowserWorkerSchemaError(error)) {
+      request.log.error({ err: error, operation }, 'Browser Worker database schema is unavailable');
+      throw new AppError(
+        'BROWSER_WORKER_STORAGE_UNAVAILABLE',
+        'Browser Worker storage is not ready. Required database migrations must be applied.',
+        503,
+      );
+    }
+    throw error;
+  }
+}
+
 export async function browserWorkerRoutes(
   app: FastifyInstance,
   options: { service: BrowserWorkerService },
 ) {
   const { service } = options;
 
-  app.get('/api/v1/browser-workers', async (_request, reply) => {
-    return reply.send({ data: await service.listWorkers() });
+  app.get('/api/v1/browser-workers', async (request, reply) => {
+    return reply.send({ data: await withBrowserWorkerStorage(request, 'list-workers', () => service.listWorkers()) });
   });
 
   app.post('/api/v1/browser-workers', async (request: FastifyRequest, reply: FastifyReply) => {
     const parsed = createWorkerSchema.safeParse(request.body);
     if (!parsed.success) throw new AppError('VALIDATION_ERROR', parsed.error.issues[0]?.message || 'Invalid Browser Worker payload', 400);
-    const worker = await service.createWorker(parsed.data);
+    const worker = await withBrowserWorkerStorage(request, 'create-worker', () => service.createWorker(parsed.data));
     return reply.status(201).send({ data: worker });
   });
 
   app.get('/api/v1/browser-workers/:id', async (request, reply) => {
-    return reply.send({ data: await service.getWorker(parseId(request)) });
+    return reply.send({ data: await withBrowserWorkerStorage(request, 'get-worker', () => service.getWorker(parseId(request))) });
   });
 
   app.patch('/api/v1/browser-workers/:id', async (request, reply) => {
     const parsed = updateWorkerSchema.safeParse(request.body);
     if (!parsed.success) throw new AppError('VALIDATION_ERROR', parsed.error.issues[0]?.message || 'Invalid Browser Worker update', 400);
-    return reply.send({ data: await service.updateWorker(parseId(request), parsed.data) });
+    return reply.send({ data: await withBrowserWorkerStorage(request, 'update-worker', () => service.updateWorker(parseId(request), parsed.data)) });
   });
 
   app.post('/api/v1/browser-workers/:id/run', async (request, reply) => {
-    const run = await service.triggerWorker(parseId(request), 'manual', true);
+    const run = await withBrowserWorkerStorage(request, 'run-worker', () => service.triggerWorker(parseId(request), 'manual', true));
     return reply.status(202).send({ data: run });
   });
 
   app.post('/api/v1/browser-workers/:id/pause', async (request, reply) => {
-    return reply.send({ data: await service.pauseWorker(parseId(request)) });
+    return reply.send({ data: await withBrowserWorkerStorage(request, 'pause-worker', () => service.pauseWorker(parseId(request))) });
   });
 
   app.post('/api/v1/browser-workers/:id/resume', async (request, reply) => {
-    return reply.send({ data: await service.resumeWorker(parseId(request)) });
+    return reply.send({ data: await withBrowserWorkerStorage(request, 'resume-worker', () => service.resumeWorker(parseId(request))) });
   });
 
   app.get('/api/v1/browser-workers/:id/history', async (request, reply) => {
-    return reply.send({ data: await service.getHistory(parseId(request)) });
+    return reply.send({ data: await withBrowserWorkerStorage(request, 'worker-history', () => service.getHistory(parseId(request))) });
   });
 
   app.get('/api/v1/browser-worker-notifications', async (request, reply) => {
     const query = request.query as { unreadOnly?: string } | undefined;
-    return reply.send({ data: await service.listNotifications(query?.unreadOnly === 'true') });
+    return reply.send({ data: await withBrowserWorkerStorage(request, 'list-notifications', () => service.listNotifications(query?.unreadOnly === 'true')) });
   });
 
-  app.post('/api/v1/browser-worker-notifications/read-all', async (_request, reply) => {
-    await service.markAllNotificationsRead();
+  app.post('/api/v1/browser-worker-notifications/read-all', async (request, reply) => {
+    await withBrowserWorkerStorage(request, 'read-notifications', () => service.markAllNotificationsRead());
     return reply.send({ data: { success: true } });
   });
 }
