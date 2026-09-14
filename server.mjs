@@ -2,8 +2,10 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createApp } from './backend/dist/app/create-app.js';
 import { loadConfig } from './backend/dist/config/env.js';
+import { runStartupMigrations } from './backend/dist/infrastructure/db/migrate.js';
 
 const config = loadConfig();
+await runStartupMigrations(config);
 const app = await createApp(config);
 const frontendDist = path.resolve('frontend/dist');
 const indexFile = path.join(frontendDist, 'index.html');
@@ -14,7 +16,7 @@ const mime = {
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
-  '.jpg': 'image/jpeg',
+  '.jpg': 'image/jpg',
   '.jpeg': 'image/jpeg',
   '.webp': 'image/webp',
   '.ico': 'image/x-icon',
