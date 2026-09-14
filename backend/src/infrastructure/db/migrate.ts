@@ -3,7 +3,7 @@ import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import type { EnvConfig } from '../../config/env.js';
 import { createDbClient } from './client.js';
 
-const migrationsFolder = fileURLToPath(new URL('../../../drizzle', import.meta.url));
+export const migrationsFolder = fileURLToPath(new URL('../../../drizzle', import.meta.url));
 
 export async function runStartupMigrations(config: EnvConfig): Promise<void> {
   if (config.NODE_ENV === 'test') return;
