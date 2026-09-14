@@ -360,6 +360,47 @@ export class BrowserSession {
           });
           return { pass: validityData > 0, actual: `found ${validityData} invalid elements` };
         }
+        case 'no_console_error': {
+          const failures = this.consoleLogs.filter((entry) => entry.type === 'error' || entry.type === 'assert');
+          if (failures.length === 0) {
+            return { pass: true, actual: 'No console errors detected' };
+          }
+
+          const errorCount = failures.filter((entry) => entry.type === 'error').length;
+          const assertCount = failures.length - errorCount;
+          const summary = [
+            errorCount > 0 ? `${errorCount} error` : null,
+            assertCount > 0 ? `${assertCount} assert` : null,
+          ].filter(Boolean).join(', ');
+
+          return {
+            pass: false,
+            actual: `Found ${failures.length} console failure entr${failures.length === 1 ? 'y' : 'ies'} (${summary})`,
+          };
+        }
+        case 'no_failed_request': {
+          const failures = this.networkLogs.filter((entry) => typeof entry.status === 'number' && entry.status >= 400);
+          if (failures.length === 0) {
+            return { pass: true, actual: 'No failed HTTP responses detected' };
+          }
+
+          const safeSummaries = failures.slice(0, 3).map((entry) => {
+            let safeUrl = '[redacted-url]';
+            try {
+              const parsed = new URL(entry.url);
+              safeUrl = `${parsed.origin}${parsed.pathname}`;
+            } catch {
+              // Keep malformed or non-HTTP URLs redacted rather than echoing captured data.
+            }
+            return `${entry.status} ${safeUrl}`;
+          });
+          const remainder = failures.length - safeSummaries.length;
+
+          return {
+            pass: false,
+            actual: `Found ${failures.length} failed HTTP response${failures.length === 1 ? '' : 's'}: ${safeSummaries.join('; ')}${remainder > 0 ? `; +${remainder} more` : ''}`,
+          };
+        }
         default:
           return { pass: false, actual: `Assertion ${type} is unsupported in this execution context` };
       }
