@@ -10,6 +10,7 @@ import { AppError } from '../../core/errors.js';
 import { PlannerService } from '../planner/planner.service.js';
 import { TestGeneratorService } from '../generator/generator.service.js';
 import { ExecutionService } from '../execution/execution.service.js';
+import { severityRoutes } from '../severity/severity.routes.js';
 import { SeverityClassifierService } from '../severity/severity.service.js';
 import { RootCauseAnalysisService } from '../analysis/analysis.service.js';
 import { CodeFixService } from '../fix/fix.service.js';
@@ -80,6 +81,7 @@ export async function apiRoutes(
   options: { db: Database; aiProvider: AIProvider; browserManager: BrowserManager; config: EnvConfig }
 ) {
   const { db, aiProvider, browserManager, config } = options;
+  severityRoutes(fastify, options);
   const plannerService = new PlannerService(db, aiProvider);
   const generatorService = new TestGeneratorService(db, aiProvider, config);
   const executionService = new ExecutionService(db, browserManager, config);
@@ -262,7 +264,6 @@ export async function apiRoutes(
     });
   });
 
-  const severityClassifier = new SeverityClassifierService();
   const analysisService = new RootCauseAnalysisService(db, aiProvider);
 
   // POST /api/v1/issues - CREATE STRUCTURED BUG / FINDING
@@ -279,7 +280,7 @@ export async function apiRoutes(
     let computedSeverityReason = payload.severityReason;
 
     if (!computedSeverity || !computedSeverityReason) {
-      const classification = severityClassifier.classify({
+      const classification = new SeverityClassifierService().classify({
         title: payload.title,
         description: payload.description,
         category: payload.category,

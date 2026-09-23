@@ -25,6 +25,7 @@ const envSchema = z.object({
   EVIDENCE_STORAGE_DIR: z.string().default('./evidence'),
   MAX_EVIDENCE_SIZE_MB: z.coerce.number().int().positive().default(10),
   MAX_SSE_SUBSCRIBERS: z.coerce.number().int().positive().default(10),
+  BUG_STORAGE_DIR: z.string().default('./bugs'),
 });
 
 

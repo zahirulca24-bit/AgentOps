@@ -19,7 +19,10 @@ export type ErrorCode =
   | 'GITHUB_REPO_NOT_FOUND'
   | 'GITHUB_PERMISSION_DENIED'
   | 'GITHUB_RATE_LIMITED'
-  | 'GITHUB_API_ERROR';
+  | 'GITHUB_API_ERROR'
+  | 'TARGET_INVALID'
+  | 'TARGET_NOT_FOUND'
+  | 'ASSERTION_UNSUPPORTED';
 
 export class AppError extends Error {
   public readonly code: ErrorCode;

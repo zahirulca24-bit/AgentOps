@@ -34,6 +34,27 @@ export interface VisualDefect {
 }
 
 export class BrowserSession {
+  private validateTarget(selector: string): void {
+    if (!selector || typeof selector !== 'string') {
+      throw new AppError('TARGET_INVALID', 'Selector cannot be empty or invalid type', 400);
+    }
+    const isLikelyEnglish = !/^(css|xpath|text|id|data-testid|has-text|role|nth|internal)=/i.test(selector) 
+      && !/^[#\.\[\*\>]/.test(selector) 
+      && (selector.includes(' ') && !/[#\.\[>:=\(\)]/.test(selector) || /^[A-Z][a-z]+(\s[A-Z][a-z]+)*$/.test(selector));
+    
+    if (isLikelyEnglish) {
+      throw new AppError('TARGET_INVALID', `Target "${selector}" appears to be semantic text, not a valid DOM selector`, 400);
+    }
+  }
+
+  private wrapError(err: any, selector?: string): never {
+    if (err instanceof AppError) throw err;
+    if (err?.name === 'TimeoutError' || err?.message?.includes('Timeout')) {
+      throw new AppError('TARGET_NOT_FOUND', `Target not found within timeout: ${selector || 'unknown'}`, 404);
+    }
+    throw new AppError('ACTION_FAILED', `Action failed: ${err?.message || err}`, 500);
+  }
+
   private page: Page;
   private security: BrowserSecurity;
   private consoleLogs: CapturedConsoleLog[] = [];
@@ -118,31 +139,37 @@ export class BrowserSession {
 
   async click(action: ClickAction) {
     const data = clickSchema.parse(action);
+    this.validateTarget(data.selector);
+    const start = Date.now();
     try {
       await this.page.click(data.selector, { timeout: this.config.BROWSER_ACTION_TIMEOUT_MS });
-      return { success: true };
+      return { success: true, status: 'passed', action: 'click', durationMs: Date.now() - start };
     } catch (err) {
-      throw new AppError('ACTION_FAILED', `Click failed: ${(err as Error).message}`, 500);
+      this.wrapError(err, data.selector);
     }
   }
 
   async fill(action: FillAction) {
     const data = fillSchema.parse(action);
+    this.validateTarget(data.selector);
+    const start = Date.now();
     try {
       await this.page.fill(data.selector, data.value, { timeout: this.config.BROWSER_ACTION_TIMEOUT_MS });
-      return { success: true };
+      return { success: true, status: 'passed', action: 'fill', durationMs: Date.now() - start };
     } catch (err) {
-      throw new AppError('ACTION_FAILED', `Fill failed: ${(err as Error).message}`, 500);
+      this.wrapError(err, data.selector);
     }
   }
 
   async select(action: SelectAction) {
     const data = selectSchema.parse(action);
+    this.validateTarget(data.selector);
+    const start = Date.now();
     try {
       await this.page.selectOption(data.selector, data.value, { timeout: this.config.BROWSER_ACTION_TIMEOUT_MS });
-      return { success: true };
+      return { success: true, status: 'passed', action: 'select', durationMs: Date.now() - start };
     } catch (err) {
-      throw new AppError('ACTION_FAILED', `Select failed: ${(err as Error).message}`, 500);
+      this.wrapError(err, data.selector);
     }
   }
 
@@ -325,7 +352,8 @@ export class BrowserSession {
 
   async evaluateAssertion(type: string, target?: string, expected?: string): Promise<{ pass: boolean; actual: string }> {
     try {
-      switch (type) {
+      const normalizedType = String(type || '').trim().toLowerCase();
+      switch (normalizedType) {
         case 'url_matches': {
           const currentUrl = this.page.url();
           return { pass: expected ? currentUrl.includes(expected) : false, actual: currentUrl };
@@ -365,14 +393,12 @@ export class BrowserSession {
           if (failures.length === 0) {
             return { pass: true, actual: 'No console errors detected' };
           }
-
           const errorCount = failures.filter((entry) => entry.type === 'error').length;
           const assertCount = failures.length - errorCount;
           const summary = [
             errorCount > 0 ? `${errorCount} error` : null,
             assertCount > 0 ? `${assertCount} assert` : null,
           ].filter(Boolean).join(', ');
-
           return {
             pass: false,
             actual: `Found ${failures.length} console failure entr${failures.length === 1 ? 'y' : 'ies'} (${summary})`,
@@ -383,28 +409,25 @@ export class BrowserSession {
           if (failures.length === 0) {
             return { pass: true, actual: 'No failed HTTP responses detected' };
           }
-
           const safeSummaries = failures.slice(0, 3).map((entry) => {
             let safeUrl = '[redacted-url]';
             try {
               const parsed = new URL(entry.url);
               safeUrl = `${parsed.origin}${parsed.pathname}`;
-            } catch {
-              // Keep malformed or non-HTTP URLs redacted rather than echoing captured data.
-            }
+            } catch {}
             return `${entry.status} ${safeUrl}`;
           });
           const remainder = failures.length - safeSummaries.length;
-
           return {
             pass: false,
             actual: `Found ${failures.length} failed HTTP response${failures.length === 1 ? '' : 's'}: ${safeSummaries.join('; ')}${remainder > 0 ? `; +${remainder} more` : ''}`,
           };
         }
         default:
-          return { pass: false, actual: `Assertion ${type} is unsupported in this execution context` };
+          throw new AppError('ASSERTION_UNSUPPORTED', `Assertion type '${normalizedType}' is unsupported (received: ${JSON.stringify(type)})`, 400);
       }
     } catch (err) {
+      if (err instanceof AppError) throw err;
       return { pass: false, actual: `Error: ${(err as Error).message}` };
     }
   }

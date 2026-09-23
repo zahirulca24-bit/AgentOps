@@ -85,3 +85,53 @@ describe('BrowserSession no_failed_request assertion', () => {
     expect(result.actual).not.toContain('#private');
   });
 });
+
+
+describe('BrowserSession Normalized Assertions & Target Validation (P1 Hardening)', () => {
+  it('unknown assertion type fails structurally with TARGET_INVALID / ASSERTION_UNSUPPORTED', async () => {
+    const session = createSession();
+    await expect(session.evaluateAssertion('non_existent_assertion_type')).rejects.toThrowError(/unsupported/);
+  });
+
+  it('whitespace/serialization-normalizable assertion inputs behave correctly where safe', async () => {
+    const session = createSession();
+    setNetworkLogs(session, []);
+    
+    // Test trailing space / mixed case which previously failed via default fallback
+    const result = await session.evaluateAssertion(' NO_failed_Request  ');
+    expect(result.pass).toBe(true);
+    expect(result.actual).toBe('No failed HTTP responses detected');
+  });
+
+  it('invalid/human-readable fill target fails clearly with TARGET_INVALID', async () => {
+    const session = createSession();
+    // Wrap page so it doesn't crash on undefined method
+    (session as any).page = { fill: async () => {} };
+    (session as any).config = { BROWSER_ACTION_TIMEOUT_MS: 3000 };
+    
+    await expect(session.fill({ selector: 'First Name', value: 'John' })).rejects.toThrowError(/Target "First Name" appears to be semantic text, not a valid DOM selector/);
+    await expect(session.fill({ selector: 'Submit Button', value: 'John' })).rejects.toThrowError(/Target "Submit Button" appears to be semantic text/);
+  });
+
+  it('valid CSS fill still works', async () => {
+    const session = createSession();
+    let fillCalledWith = '';
+    (session as any).page = { fill: async (sel: string) => { fillCalledWith = sel; } };
+    (session as any).config = { BROWSER_ACTION_TIMEOUT_MS: 3000 };
+    
+    const result = await session.fill({ selector: 'input[name="first_name"]', value: 'John' });
+    expect(result.success).toBe(true);
+    expect(result.status).toBe('passed');
+    expect(fillCalledWith).toBe('input[name="first_name"]');
+  });
+
+  it('validates Playwright engines like text= or role=', async () => {
+    const session = createSession();
+    let clickCalled = false;
+    (session as any).page = { click: async () => { clickCalled = true; } };
+    (session as any).config = { BROWSER_ACTION_TIMEOUT_MS: 3000 };
+
+    await session.click({ selector: 'role=button[name="Submit"]' });
+    expect(clickCalled).toBe(true);
+  });
+});

@@ -1,8 +1,23 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { createApp } from './backend/dist/app/create-app.js';
 import { loadConfig } from './backend/dist/config/env.js';
 import { runStartupMigrations } from './backend/dist/infrastructure/db/migrate.js';
+import { createApp } from './backend/dist/app/create-app.js';
+
+// P1 Runtime consistency check: Ensure dist is not stale
+try {
+  const distStat = await fs.stat('./backend/dist/infrastructure/browser/browser.session.js');
+  const srcStat = await fs.stat('./backend/src/infrastructure/browser/browser.session.ts');
+  if (distStat.mtimeMs < srcStat.mtimeMs) {
+    console.error("STALE BUILD DETECTED: ./backend/dist is older than ./backend/src. Please run 'npm run build' in the backend directory.");
+    process.exit(1);
+  }
+} catch (e) {
+  if (e.code === 'ENOENT') {
+    console.error("BUILD MISSING: ./backend/dist not found. Please run 'npm run build' in the backend directory.");
+    process.exit(1);
+  }
+}
 
 const config = loadConfig();
 await runStartupMigrations(config);
