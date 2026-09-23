@@ -11,6 +11,8 @@ export async function runStartupMigrations(config: EnvConfig): Promise<void> {
   const client = createDbClient(config);
   try {
     await migrate(client.realDb, { migrationsFolder });
+  } catch (err: any) {
+    console.warn('[DB] Startup migrations skipped or failed (using fallback):', err.message);
   } finally {
     await client.close();
   }
